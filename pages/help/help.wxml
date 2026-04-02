@@ -1,0 +1,139 @@
+<view class="container">
+  <!-- 页面标题 -->
+  <view class="header">
+    <text class="title">帮助中心</text>
+    <text class="subtitle">智课笔记使用指南</text>
+  </view>
+
+  <!-- 快速开始 -->
+  <view class="section">
+    <view class="section-title">🚀 快速开始</view>
+    <view class="help-list">
+      <view class="help-item" bindtap="expandItem" data-id="start">
+        <view class="help-header">
+          <text class="help-q">如何开始使用？</text>
+          <text class="help-arrow {{expanded === 'start' ? 'expanded' : ''}}">▼</text>
+        </view>
+        <view class="help-content" wx:if="{{expanded === 'start'}}">
+          <text class="help-a">1. 点击首页"开始录音"按钮
+2. 选择课程并开始录音
+3. 录音结束后自动转写为文字
+4. 查看生成的笔记和总结</text>
+        </view>
+      </view>
+
+      <view class="help-item" bindtap="expandItem" data-id="config">
+        <view class="help-header">
+          <text class="help-q">如何配置 Coze API？</text>
+          <text class="help-arrow {{expanded === 'config' ? 'expanded' : ''}}">▼</text>
+        </view>
+        <view class="help-content" wx:if="{{expanded === 'config'}}">
+          <text class="help-a">1. 访问 https://www.coze.cn
+2. 进入个人设置 -> 开发者令牌
+3. 创建并复制 Token
+4. 在智课笔记"个人中心"->"API配置"中填入 Token
+5. 配置各个 Bot ID（可选）</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 功能介绍 -->
+  <view class="section">
+    <view class="section-title">📱 功能介绍</view>
+    <view class="feature-grid">
+      <view class="feature-item">
+        <text class="feature-icon">🎤</text>
+        <text class="feature-name">录音转写</text>
+        <text class="feature-desc">课堂录音自动转文字</text>
+      </view>
+      <view class="feature-item">
+        <text class="feature-icon">📷</text>
+        <text class="feature-name">拍图识别</text>
+        <text class="feature-desc">拍照提取板书内容</text>
+      </view>
+      <view class="feature-item">
+        <text class="feature-icon">💬</text>
+        <text class="feature-name">AI答疑</text>
+        <text class="feature-desc">基于笔记智能问答</text>
+      </view>
+      <view class="feature-item">
+        <text class="feature-icon">📝</text>
+        <text class="feature-name">复习卷</text>
+        <text class="feature-desc">自动生成练习题</text>
+      </view>
+      <view class="feature-item">
+        <text class="feature-icon">❌</text>
+        <text class="feature-name">错题本</text>
+        <text class="feature-desc">收录错题反复练习</text>
+      </view>
+      <view class="feature-item">
+        <text class="feature-icon">🗺️</text>
+        <text class="feature-name">思维导图</text>
+        <text class="feature-desc">知识点可视化</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 常见问题 -->
+  <view class="section">
+    <view class="section-title">❓ 常见问题</view>
+    <view class="help-list">
+      <view class="help-item" bindtap="expandItem" data-id="q1">
+        <view class="help-header">
+          <text class="help-q">录音转写需要联网吗？</text>
+          <text class="help-arrow {{expanded === 'q1' ? 'expanded' : ''}}">▼</text>
+        </view>
+        <view class="help-content" wx:if="{{expanded === 'q1'}}">
+          <text class="help-a">是的，录音转写需要联网并配置 Coze API。未配置时会显示模拟数据。</text>
+        </view>
+      </view>
+
+      <view class="help-item" bindtap="expandItem" data-id="q2">
+        <view class="help-header">
+          <text class="help-q">数据存储在哪里？</text>
+          <text class="help-arrow {{expanded === 'q2' ? 'expanded' : ''}}">▼</text>
+        </view>
+        <view class="help-content" wx:if="{{expanded === 'q2'}}">
+          <text class="help-a">数据默认存储在本地。建议定期使用"数据备份"功能导出，以防数据丢失。</text>
+        </view>
+      </view>
+
+      <view class="help-item" bindtap="expandItem" data-id="q3">
+        <view class="help-header">
+          <text class="help-q">如何删除笔记？</text>
+          <text class="help-arrow {{expanded === 'q3' ? 'expanded' : ''}}">▼</text>
+        </view>
+        <view class="help-content" wx:if="{{expanded === 'q3'}}">
+          <text class="help-a">进入笔记详情页，点击右上角的"..."菜单，选择"删除笔记"即可。</text>
+        </view>
+      </view>
+
+      <view class="help-item" bindtap="expandItem" data-id="q4">
+        <view class="help-header">
+          <text class="help-q">拍图识别支持哪些内容？</text>
+          <text class="help-arrow {{expanded === 'q4' ? 'expanded' : ''}}">▼</text>
+        </view>
+        <view class="help-content" wx:if="{{expanded === 'q4'}}">
+          <text class="help-a">支持识别黑板、PPT、教材、手写笔记等内容。识别效果取决于图片清晰度。</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 联系我们 -->
+  <view class="section">
+    <view class="section-title">📞 联系我们</view>
+    <view class="contact-card">
+      <text class="contact-text">如有问题或建议，欢迎联系我们：</text>
+      <text class="contact-email">support@zhikenotes.com</text>
+      <button class="feedback-btn" bindtap="sendFeedback">提交反馈</button>
+    </view>
+  </view>
+
+  <!-- 版本信息 -->
+  <view class="version-info">
+    <text>智课笔记 v1.0</text>
+    <text>© 2026 AI-GROUP-20</text>
+  </view>
+</view>
