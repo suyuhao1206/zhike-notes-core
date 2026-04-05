@@ -1,0 +1,169 @@
+<view class="container">
+  <!-- 复习模式选择 -->
+  <view class="mode-select" wx:if="{{!action}}">
+    <view class="header">
+      <text class="title">选择复习模式</text>
+      <text class="subtitle">根据你的学习情况选择合适的方式</text>
+    </view>
+    
+    <view class="mode-list">
+      <view class="mode-card" wx:for="{{reviewModes}}" wx:key="id" bindtap="selectMode" data-id="{{item.id}}">
+        <text class="mode-icon">{{item.icon}}</text>
+        <view class="mode-info">
+          <text class="mode-name">{{item.name}}</text>
+          <text class="mode-desc">{{item.desc}}</text>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 错题统计 -->
+    <view class="mistakes-stats" wx:if="{{mistakeList.length > 0}}">
+      <text class="stats-title">错题提醒</text>
+      <view class="stats-content">
+        <text class="stats-count">{{mistakeList.length}}道错题待复习</text>
+        <text class="stats-btn" bindtap="selectMode" data-id="mistakes">去练习</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 试卷生成配置 -->
+  <view class="config-panel" wx:if="{{action === 'config'}}">
+    <view class="header">
+      <text class="back-btn" bindtap="goBack">← 返回</text>
+      <text class="title">试卷配置</text>
+    </view>
+    
+    <!-- 题型选择 -->
+    <view class="config-section">
+      <text class="section-title">选择题型</text>
+      <view class="type-list">
+        <view class="type-item {{item.selected ? 'selected' : ''}}" 
+              wx:for="{{questionTypeOptions}}" 
+              wx:key="name"
+              bindtap="toggleType"
+              data-type="{{item.name}}">
+          <text class="type-check">{{item.selected ? '✓' : ''}}</text>
+          <text class="type-name">{{item.name}}</text>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 题量选择 -->
+    <view class="config-section">
+      <text class="section-title">题目数量</text>
+      <view class="count-list">
+        <view class="count-item {{config.questionCount === 5 ? 'selected' : ''}}" 
+              bindtap="setQuestionCount" data-count="5">5题</view>
+        <view class="count-item {{config.questionCount === 10 ? 'selected' : ''}}" 
+              bindtap="setQuestionCount" data-count="10">10题</view>
+        <view class="count-item {{config.questionCount === 15 ? 'selected' : ''}}" 
+              bindtap="setQuestionCount" data-count="15">15题</view>
+        <view class="count-item {{config.questionCount === 20 ? 'selected' : ''}}" 
+              bindtap="setQuestionCount" data-count="20">20题</view>
+      </view>
+    </view>
+    
+    <!-- 难度选择 -->
+    <view class="config-section">
+      <text class="section-title">难度级别</text>
+      <view class="difficulty-list">
+        <view class="difficulty-item {{config.difficulty === 'easy' ? 'selected' : ''}}" 
+              bindtap="setDifficulty" data-difficulty="easy">简单</view>
+        <view class="difficulty-item {{config.difficulty === 'medium' ? 'selected' : ''}}" 
+              bindtap="setDifficulty" data-difficulty="medium">中等</view>
+        <view class="difficulty-item {{config.difficulty === 'hard' ? 'selected' : ''}}" 
+              bindtap="setDifficulty" data-difficulty="hard">困难</view>
+      </view>
+    </view>
+    
+    <!-- 生成按钮 -->
+    <button class="generate-btn" bindtap="generateExam">生成试卷</button>
+  </view>
+
+  <!-- 答题页面 -->
+  <view class="exam-page" wx:if="{{action === 'exam' && exam && !isFinished}}">
+    <view class="exam-header">
+      <text class="back-btn" bindtap="goBack">← 返回</text>
+      <text class="progress">{{currentIndex + 1}}/{{exam.questions.length}}</text>
+    </view>
+    
+    <view class="question-card">
+      <view class="question-type">{{currentQuestionDisplay.type}}</view>
+      <text class="question-content">{{currentQuestionDisplay.content}}</text>
+      
+      <!-- 选择题 -->
+      <view class="options" wx:if="{{currentQuestionDisplay.type === '选择题'}}">
+        <view class="option {{answers[currentIndex] === item.label ? 'selected' : ''}}" 
+              wx:for="{{currentQuestionDisplay.optionsDisplay}}" 
+              wx:key="raw"
+              bindtap="selectAnswer"
+              data-answer="{{item.label}}">
+          <text class="option-label">{{item.label}}</text>
+          <text class="option-text">{{item.text}}</text>
+        </view>
+      </view>
+      
+      <!-- 填空题 -->
+      <view class="fill-input" wx:if="{{currentQuestionDisplay.type === '填空题'}}">
+        <input class="input-box" 
+               placeholder="请输入答案"
+               value="{{answers[currentIndex] || ''}}"
+               bindinput="inputFillAnswer"/>
+      </view>
+      
+      <!-- 简答题 -->
+      <view class="short-input" wx:if="{{currentQuestionDisplay.type === '简答题'}}">
+        <textarea class="input-box" 
+                  placeholder="请输入答案"
+                  value="{{answers[currentIndex] || ''}}"
+                  bindinput="inputShortAnswer"/>
+      </view>
+    </view>
+    
+    <!-- 操作按钮 -->
+    <view class="action-btns">
+      <button class="next-btn" bindtap="nextQuestion">
+        {{currentIndex < exam.questions.length - 1 ? '下一题' : '提交'}}
+      </button>
+    </view>
+  </view>
+
+  <!-- 答题结果 -->
+  <view class="result-page" wx:if="{{action === 'exam' && isFinished}}">
+    <view class="score-card">
+      <text class="score-title">答题完成</text>
+      <text class="score-value">{{score}}分</text>
+      <text class="score-total">满分{{exam.totalScore}}分</text>
+      
+      <view class="score-analysis">
+        <text class="analysis-text">答对{{correctCount}}题，答错{{wrongCount}}题</text>
+      </view>
+      
+      <button class="review-btn" bindtap="goBack">继续复习</button>
+    </view>
+  </view>
+
+  <!-- 错题本 -->
+  <view class="mistakes-page" wx:if="{{action === 'mistakes'}}">
+    <view class="header">
+      <text class="back-btn" bindtap="goBack">← 返回</text>
+      <text class="title">错题本</text>
+    </view>
+    
+    <view class="mistake-list">
+      <view class="mistake-card" wx:for="{{mistakeList}}" wx:key="id">
+        <text class="mistake-course">{{item.courseName}}</text>
+        <text class="mistake-question">{{item.question}}</text>
+        <view class="mistake-answers">
+          <text class="wrong-answer">错误: {{item.wrongAnswer}}</text>
+          <text class="correct-answer">正确: {{item.correctAnswer}}</text>
+        </view>
+      </view>
+      
+      <view class="empty-state" wx:if="{{mistakeList.length === 0}}">
+        <text class="empty-icon">🎉</text>
+        <text class="empty-text">暂无错题，继续保持！</text>
+      </view>
+    </view>
+  </view>
+</view>

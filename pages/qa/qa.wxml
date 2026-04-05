@@ -1,0 +1,83 @@
+<view class="container">
+  <!-- 消息列表 -->
+  <scroll-view class="message-list" scroll-y scroll-into-view="{{scrollToId}}">
+    <view class="message-item {{item.type}}" wx:for="{{messages}}" wx:key="index" id="msg-{{index}}">
+      <view class="message-header">
+        <text class="sender-name">{{item.type === 'user' ? '我' : 'AI助手'}}</text>
+        <text class="message-time">{{item.time}}</text>
+      </view>
+      <view class="message-content">
+        <rich-text nodes="{{item.content}}"></rich-text>
+      </view>
+      <view class="message-actions" wx:if="{{item.type === 'ai'}}">
+        <text class="action-btn" bindtap="copyAnswer" data-content="{{item.content}}">复制</text>
+      </view>
+    </view>
+
+    <!-- 空状态 -->
+    <view class="empty-state" wx:if="{{messages.length === 0}}">
+      <text class="empty-icon">💬</text>
+      <text class="empty-text">开始提问吧，AI 会帮你解答课程相关问题</text>
+    </view>
+
+    <!-- 发送中状态 -->
+    <view class="message-item ai sending" wx:if="{{isSending}}">
+      <view class="message-header">
+        <text class="sender-name">AI助手</text>
+        <text class="message-time">正在思考...</text>
+      </view>
+      <view class="message-content">
+        <text class="typing-text">{{currentQuestion}}</text>
+        <view class="typing-indicator">
+          <view class="dot"></view>
+          <view class="dot"></view>
+          <view class="dot"></view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- 快捷问题 -->
+  <view class="quick-questions" wx:if="{{messages.length <= 1 && !isSending}}">
+    <text class="quick-title">快捷问题</text>
+    <view class="quick-list">
+      <view class="quick-item" bindtap="quickQuestion" data-question="这个知识点怎么理解？">
+        <text class="quick-text">这个知识点怎么理解？</text>
+      </view>
+      <view class="quick-item" bindtap="quickQuestion" data-question="给我出一道练习题">
+        <text class="quick-text">给我出一道练习题</text>
+      </view>
+      <view class="quick-item" bindtap="quickQuestion" data-question="有哪些常考题型？">
+        <text class="quick-text">有哪些常考题型？</text>
+      </view>
+      <view class="quick-item" bindtap="quickQuestion" data-question="考试重点是什么？">
+        <text class="quick-text">考试重点是什么？</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 输入区域 -->
+  <view class="input-area">
+    <view class="input-container">
+      <textarea 
+        class="input-box"
+        value="{{inputValue}}"
+        bindinput="onInputChange"
+        placeholder="输入你的问题..."
+        maxlength="500"
+        auto-height
+        show-confirm-bar="{{false}}"
+      />
+      <button 
+        class="send-btn {{inputValue ? 'active' : ''}}"
+        bindtap="sendQuestion"
+        disabled="{{isSending || !inputValue}}"
+      >
+        发送
+      </button>
+    </view>
+    <view class="input-actions">
+      <text class="clear-btn" bindtap="clearMessages">清空对话</text>
+    </view>
+  </view>
+</view>
