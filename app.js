@@ -1,9 +1,24 @@
 const internalAIConfig = require('./config/ai.config.js');
+const DB = require('./utils/db.js');
 
 App({
   onLaunch() {
     // 小程序启动时执行
     console.log('智课笔记小程序启动');
+
+    // 初始化云开发环境
+    if (wx.cloud) {
+      wx.cloud.init({
+        env: '你的云开发环境ID', // 替换为你的云开发环境ID
+        traceUser: true
+      });
+      console.log('云开发环境初始化成功');
+      
+      // 初始化数据库模块
+      DB.init();
+    } else {
+      console.warn('请使用 2.2.3 或以上的基础库以使用云能力');
+    }
 
     // 检查登录状态
     this.checkLoginStatus();

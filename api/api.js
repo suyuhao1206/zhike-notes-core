@@ -2,9 +2,8 @@
  * API 模块 - 封装所有 API 调用
  */
 
-/**
- * 获取 AI 配置（支持 Coze/OpenAI/兼容 OpenAI 协议的厂商）
- */
+const DB = require('../utils/db.js');
+
 function getAIConfig() {
   const app = getApp();
   return app.globalData.aiConfig || {
@@ -460,119 +459,81 @@ ${content}
  * 保存课程
  * @param {object} course 课程信息
  */
-function saveCourse(course) {
-  return new Promise((resolve) => {
-    const courses = wx.getStorageSync('courses') || [];
-    course.id = course.id || Date.now();
-    course.updateTime = new Date().toISOString();
-
-    const index = courses.findIndex(c => c.id === course.id);
-    if (index > -1) {
-      courses[index] = course;
-    } else {
-      courses.push(course);
-    }
-
-    wx.setStorageSync('courses', courses);
-    resolve(course);
-  });
+async function saveCourse(course) {
+  const data = { ...course };
+  if (course.id && !course._id) {
+    data.id = course.id;
+  }
+  if (course._id) {
+    return await DB.update('courses', course._id, data);
+  }
+  return await DB.add('courses', data);
 }
 
 /**
  * 获取课程列表
  */
-function getCourses() {
-  return new Promise((resolve) => {
-    const courses = wx.getStorageSync('courses') || [];
-    resolve(courses);
-  });
+async function getCourses() {
+  return await DB.list('courses', { limit: 100 });
 }
 
 /**
  * 保存笔记
  * @param {object} note 笔记信息
  */
-function saveNote(note) {
-  return new Promise((resolve) => {
-    const notes = wx.getStorageSync('notes') || [];
-    note.id = note.id || Date.now();
-    note.updateTime = new Date().toISOString();
-
-    const index = notes.findIndex(n => n.id === note.id);
-    if (index > -1) {
-      notes[index] = note;
-    } else {
-      notes.unshift(note);
-    }
-
-    wx.setStorageSync('notes', notes);
-    resolve(note);
-  });
+async function saveNote(note) {
+  const data = { ...note };
+  if (note.id && !note._id) {
+    data.id = note.id;
+  }
+  if (note._id) {
+    return await DB.update('notes', note._id, data);
+  }
+  return await DB.add('notes', data);
 }
 
 /**
  * 获取笔记列表
  * @param {number} courseId 课程ID（可选）
  */
-function getNotes(courseId) {
-  return new Promise((resolve) => {
-    let notes = wx.getStorageSync('notes') || [];
-    if (courseId) {
-      notes = notes.filter(n => n.courseId === courseId);
-    }
-    resolve(notes);
-  });
+async function getNotes(courseId) {
+  const where = courseId ? { courseId } : {};
+  return await DB.list('notes', { where, limit: 100 });
 }
 
 /**
  * 获取笔记详情
  * @param {number} noteId 笔记ID
  */
-function getNoteById(noteId) {
-  return new Promise((resolve) => {
-    const notes = wx.getStorageSync('notes') || [];
-    const note = notes.find(n => n.id == noteId);
-    resolve(note);
-  });
+async function getNoteById(noteId) {
+  return await DB.get('notes', noteId);
 }
 
 /**
  * 删除笔记
  * @param {number} noteId 笔记ID
  */
-function deleteNote(noteId) {
-  return new Promise((resolve) => {
-    let notes = wx.getStorageSync('notes') || [];
-    notes = notes.filter(n => n.id != noteId);
-    wx.setStorageSync('notes', notes);
-    resolve(true);
-  });
+async function deleteNote(noteId) {
+  return await DB.remove('notes', noteId);
 }
 
 /**
  * 保存错题
  * @param {object} mistake 错题信息
  */
-function saveMistake(mistake) {
-  return new Promise((resolve) => {
-    const mistakes = wx.getStorageSync('mistakes') || [];
-    mistake.id = mistake.id || Date.now();
-    mistake.createTime = new Date().toISOString();
-
-    mistakes.unshift(mistake);
-    wx.setStorageSync('mistakes', mistakes);
-    resolve(mistake);
-  });
+async function saveMistake(mistake) {
+  const data = { ...mistake };
+  if (mistake.id && !mistake._id) {
+    data.id = mistake.id;
+  }
+  return await DB.add('mistakes', data);
 }
 
 /**
  * 获取错题列表
  */
-function getMistakes() {
-  return new Promise((resolve) => {
-    const mistakes = wx.getStorageSync('mistakes') || [];
-    resolve(mistakes);
-  });
+async function getMistakes() {
+  return await DB.list('mistakes', { limit: 100 });
 }
 
 /**
@@ -583,7 +544,7 @@ function getMistakes() {
 async function searchNotes(query, options = {}) {
   const { courseId, tag, limit = 20 } = options;
 
-  let notes = wx.getStorageSync('notes') || [];
+  let notes = await DB.list('notes', { limit: 100 });
   const lowerQuery = query.toLowerCase();
 
   const filtered = notes.filter(note => {

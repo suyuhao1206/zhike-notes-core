@@ -1,5 +1,6 @@
 {
   "description": "智课笔记小程序",
+  "cloudfunctionRoot": "cloudfunctions/",
   "packOptions": {
     "ignore": [
       {
@@ -58,9 +59,10 @@
   },
   "compileType": "miniprogram",
   "libVersion": "3.15.0",
-  "appid": "你的小程序ID",
+  "appid": "你的appID",
   "projectname": "智课笔记",
   "condition": {},
   "simulatorPluginLibVersion": {},
-  "editorSetting": {}
+  "editorSetting": {},
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
 }
