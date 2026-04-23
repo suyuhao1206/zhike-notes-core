@@ -30,7 +30,7 @@
   <!-- 错题列表 -->
   <view class="mistake-list">
     <block wx:if="{{mistakes.length > 0}}">
-      <view wx:for="{{mistakes}}" wx:key="id" class="mistake-card {{item.fixed ? 'fixed' : ''}}" bindtap="viewMistake" data-id="{{item.id}}">
+      <view wx:for="{{mistakes}}" wx:key="id" class="mistake-card {{item.fixed ? 'fixed' : ''}}" bindtap="viewMistake" data-id="{{item._id || item.id}}">
         <view class="mistake-header">
           <view class="course-tag">{{item.courseName || '未分类'}}</view>
           <view class="mistake-status">
@@ -59,10 +59,10 @@
           <text class="time">{{item.createTime}}</text>
           <view class="actions">
             <block wx:if="{{!item.fixed}}">
-              <button class="action-btn fix-btn" catchtap="markAsFixed" data-id="{{item.id}}">标记掌握</button>
+              <button class="action-btn fix-btn" catchtap="markAsFixed" data-id="{{item._id || item.id}}">标记掌握</button>
             </block>
-            <button class="action-btn retry-btn" catchtap="retryMistake" data-id="{{item.id}}">重新练习</button>
-            <button class="action-btn delete-btn" catchtap="deleteMistake" data-id="{{item.id}}">删除</button>
+            <button class="action-btn retry-btn" catchtap="retryMistake" data-id="{{item._id || item.id}}">重新练习</button>
+            <button class="action-btn delete-btn" catchtap="deleteMistake" data-id="{{item._id || item.id}}">删除</button>
           </view>
         </view>
       </view>

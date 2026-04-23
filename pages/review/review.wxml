@@ -16,7 +16,6 @@
       </view>
     </view>
     
-    <!-- 错题统计 -->
     <view class="mistakes-stats" wx:if="{{mistakeList.length > 0}}">
       <text class="stats-title">错题提醒</text>
       <view class="stats-content">
@@ -26,14 +25,37 @@
     </view>
   </view>
 
+  <!-- 课程选择 -->
+  <view class="course-select" wx:if="{{action === 'selectCourse'}}">
+    <view class="header">
+      <text class="back-btn" bindtap="goBack">← 返回</text>
+      <text class="title">选择课程</text>
+    </view>
+    
+    <view class="course-list">
+      <view class="course-card" wx:for="{{courses}}" wx:key="id" bindtap="selectCourse" data-id="{{item.id || item._id}}">
+        <text class="course-icon">📚</text>
+        <view class="course-info">
+          <text class="course-name">{{item.name}}</text>
+        </view>
+      </view>
+      
+      <view class="empty-state" wx:if="{{courses.length === 0}}">
+        <text class="empty-icon">📚</text>
+        <text class="empty-text">暂无课程</text>
+        <text class="empty-hint">请先创建课程</text>
+      </view>
+    </view>
+  </view>
+
   <!-- 试卷生成配置 -->
   <view class="config-panel" wx:if="{{action === 'config'}}">
     <view class="header">
       <text class="back-btn" bindtap="goBack">← 返回</text>
       <text class="title">试卷配置</text>
+      <text class="course-name-display">{{selectedCourse.name}}</text>
     </view>
     
-    <!-- 题型选择 -->
     <view class="config-section">
       <text class="section-title">选择题型</text>
       <view class="type-list">
@@ -48,7 +70,6 @@
       </view>
     </view>
     
-    <!-- 题量选择 -->
     <view class="config-section">
       <text class="section-title">题目数量</text>
       <view class="count-list">
@@ -63,7 +84,6 @@
       </view>
     </view>
     
-    <!-- 难度选择 -->
     <view class="config-section">
       <text class="section-title">难度级别</text>
       <view class="difficulty-list">
@@ -76,7 +96,6 @@
       </view>
     </view>
     
-    <!-- 生成按钮 -->
     <button class="generate-btn" bindtap="generateExam">生成试卷</button>
   </view>
 
@@ -91,7 +110,6 @@
       <view class="question-type">{{currentQuestionDisplay.type}}</view>
       <text class="question-content">{{currentQuestionDisplay.content}}</text>
       
-      <!-- 选择题 -->
       <view class="options" wx:if="{{currentQuestionDisplay.type === '选择题'}}">
         <view class="option {{answers[currentIndex] === item.label ? 'selected' : ''}}" 
               wx:for="{{currentQuestionDisplay.optionsDisplay}}" 
@@ -103,7 +121,6 @@
         </view>
       </view>
       
-      <!-- 填空题 -->
       <view class="fill-input" wx:if="{{currentQuestionDisplay.type === '填空题'}}">
         <input class="input-box" 
                placeholder="请输入答案"
@@ -111,7 +128,6 @@
                bindinput="inputFillAnswer"/>
       </view>
       
-      <!-- 简答题 -->
       <view class="short-input" wx:if="{{currentQuestionDisplay.type === '简答题'}}">
         <textarea class="input-box" 
                   placeholder="请输入答案"
@@ -120,7 +136,6 @@
       </view>
     </view>
     
-    <!-- 操作按钮 -->
     <view class="action-btns">
       <button class="next-btn" bindtap="nextQuestion">
         {{currentIndex < exam.questions.length - 1 ? '下一题' : '提交'}}
@@ -143,6 +158,34 @@
     </view>
   </view>
 
+  <!-- 急救模式 -->
+  <view class="emergency-page" wx:if="{{action === 'emergency'}}">
+    <view class="header">
+      <text class="back-btn" bindtap="goBack">← 返回</text>
+      <text class="title">期末急救</text>
+    </view>
+    
+    <view class="emergency-content" wx:if="{{emergencyContent}}">
+      <view class="emergency-header">
+        <text class="emergency-title">{{emergencyContent.title}}</text>
+      </view>
+      
+      <view class="section-item" wx:for="{{emergencyContent.sections}}" wx:key="title">
+        <text class="section-title">{{item.title}}</text>
+        <text class="section-content">{{item.content}}</text>
+      </view>
+
+      <view class="section-item" wx:if="{{!emergencyContent.sections || emergencyContent.sections.length === 0}}">
+        <text class="section-title">核心内容</text>
+        <text class="section-content">{{emergencyContent.text || emergencyContent.answer || emergencyContent.summary || emergencyContent.content}}</text>
+      </view>
+    </view>
+    
+    <view class="loading" wx:if="{{isGeneratingEmergency}}">
+      <text class="loading-text">正在生成急救知识点...</text>
+    </view>
+  </view>
+
   <!-- 错题本 -->
   <view class="mistakes-page" wx:if="{{action === 'mistakes'}}">
     <view class="header">
@@ -152,7 +195,13 @@
     
     <view class="mistake-list">
       <view class="mistake-card" wx:for="{{mistakeList}}" wx:key="id">
-        <text class="mistake-course">{{item.courseName}}</text>
+        <view class="mistake-header">
+          <text class="mistake-course">{{item.courseName}}</text>
+          <text class="mistake-actions">
+            <text class="action-btn" bindtap="editMistake" data-id="{{item.id}}">编辑</text>
+            <text class="action-btn delete" bindtap="deleteMistake" data-id="{{item.id}}">删除</text>
+          </text>
+        </view>
         <text class="mistake-question">{{item.question}}</text>
         <view class="mistake-answers">
           <text class="wrong-answer">错误: {{item.wrongAnswer}}</text>

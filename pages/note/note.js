@@ -2,6 +2,33 @@
 const api = require('../../api/api.js');
 const util = require('../../utils/util.js');
 
+function normalizeMindMap(raw, fallbackTitle) {
+  if (!raw) return null;
+
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch (e) {
+      return {
+        title: fallbackTitle || '知识结构',
+        children: raw.split(/\n+/).filter(Boolean).slice(0, 12).map(line => ({
+          name: line.replace(/^[-*\d.、\s]+/, ''),
+          children: []
+        }))
+      };
+    }
+  }
+
+  const children = raw.children || raw.nodes || raw.items || [];
+  return {
+    title: raw.title || raw.name || fallbackTitle || '知识结构',
+    children: children.map(item => ({
+      name: item.name || item.title || item.text || '知识点',
+      children: item.children || item.items || item.points || []
+    }))
+  };
+}
+
 Page({
   data: {
     noteId: null,
@@ -10,16 +37,25 @@ Page({
     isLoading: true,
     isEditing: false,
     editContent: '',
-    isSummarizing: false
+    isGeneratingCards: false,
+    existingCards: null,
+    showFullMindMap: false,
+    isGeneratingMindMap: false,
+    mindMapPreviewSections: [],
+    mindMapSections: []
   },
 
   onLoad(options) {
     const noteId = options.id;
+    if (!noteId) {
+      wx.showToast({ title: '笔记ID无效', icon: 'none' });
+      setTimeout(() => wx.navigateBack(), 1500);
+      return;
+    }
     this.setData({ noteId });
     this.loadNoteDetail(noteId);
   },
 
-  // 加载笔记详情
   async loadNoteDetail(noteId) {
     this.setData({ isLoading: true });
 
@@ -27,22 +63,22 @@ Page({
       const note = await api.getNoteById(noteId);
 
       if (note) {
-        // 格式化时间
         note.createTimeFormatted = this.formatDateTime(note.createTime);
         note.updateTimeFormatted = this.formatDateTime(note.updateTime);
+        note.title = note.title || '无标题笔记';
+        note.courseName = note.courseName || '未分类';
+        note.content = note.content || '';
+        note.tags = note.tags || [];
 
-        // 如果没有摘要，尝试生成
-        if (!note.summary && note.content) {
-          this.generateSummary(note);
-        }
+        const mindMap = normalizeMindMap(note.mindMap, note.title);
 
         this.setData({
           note,
+          mindMap,
+          mindMapPreviewSections: this.buildMindMapSections(mindMap, true),
+          mindMapSections: this.buildMindMapSections(mindMap, false),
           isLoading: false
         });
-
-        // 生成思维导图
-        this.generateMindMap(note);
       } else {
         wx.showToast({ title: '笔记不存在', icon: 'none' });
         setTimeout(() => wx.navigateBack(), 1500);
@@ -54,92 +90,31 @@ Page({
     }
   },
 
-  // 格式化时间
   formatDateTime(timeStr) {
     if (!timeStr) return '未知时间';
     const date = new Date(timeStr);
     return `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2,'0')}-${date.getDate().toString().padStart(2,'0')} ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
   },
 
-  // 生成摘要
-  async generateSummary(note) {
-    this.setData({ isSummarizing: true });
+  buildMindMapSections(mindMap, preview) {
+    if (!mindMap || !mindMap.children) return [];
 
-    try {
-      const result = await api.summarizeNote(note.content);
+    const sections = preview ? mindMap.children.slice(0, 3) : mindMap.children;
+    return sections.map(section => {
+      const children = section.children || section.items || section.points || [];
+      const visibleChildren = preview ? children.slice(0, 2) : children;
 
-      // 更新笔记
-      note.summary = result.summary;
-      note.tags = result.tags;
-      await api.saveNote(note);
-
-      this.setData({
-        note,
-        isSummarizing: false
-      });
-    } catch (error) {
-      console.error('生成摘要失败:', error);
-      this.setData({ isSummarizing: false });
-    }
-  },
-
-  // 生成思维导图
-  async generateMindMap(note) {
-    if (note.mindMap) {
-      this.setData({ mindMap: note.mindMap });
-      return;
-    }
-
-    try {
-      // 使用简单算法生成思维导图
-      const content = note.content;
-      const lines = content.split('\n').filter(l => l.trim());
-
-      // 提取标题作为节点
-      const mindMap = {
-        title: note.title,
-        children: []
+      return {
+        name: section.name || section.title || section.text || '知识点',
+        moreCount: preview ? Math.max(children.length - visibleChildren.length, 0) : 0,
+        children: visibleChildren.map(item => ({
+          name: item.name || item.title || item.text || String(item),
+          children: item.children || item.items || item.points || []
+        }))
       };
-
-      let currentSection = null;
-
-      lines.forEach(line => {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('##') || trimmed.startsWith('###')) {
-          const title = trimmed.replace(/^#+\s*/, '');
-          currentSection = { title, children: [] };
-          mindMap.children.push(currentSection);
-        } else if (trimmed.startsWith('-') || trimmed.startsWith('*')) {
-          const item = trimmed.replace(/^[-*]\s*/, '');
-          if (currentSection) {
-            currentSection.children.push(item);
-          } else {
-            if (mindMap.children.length === 0) {
-              mindMap.children.push({ title: '要点', children: [] });
-            }
-            mindMap.children[0].children.push(item);
-          }
-        }
-      });
-
-      // 如果没有提取到内容，使用默认结构
-      if (mindMap.children.length === 0) {
-        mindMap.children = [
-          { title: '主要内容', children: ['笔记内容'] }
-        ];
-      }
-
-      this.setData({ mindMap });
-
-      // 保存到笔记
-      note.mindMap = mindMap;
-      await api.saveNote(note);
-    } catch (error) {
-      console.error('生成思维导图失败:', error);
-    }
+    });
   },
 
-  // 开始编辑
   startEdit() {
     this.setData({
       isEditing: true,
@@ -181,33 +156,203 @@ Page({
     });
   },
 
-  // 查看思维导图
-  viewMindMap() {
-    wx.showToast({
-      title: '思维导图功能开发中',
-      icon: 'none'
-    });
+  async viewMindMap() {
+    if (this.data.isGeneratingMindMap) {
+      wx.showToast({ title: '正在生成中...', icon: 'none' });
+      return;
+    }
+
+    if (this.data.mindMap) {
+      wx.showModal({
+        title: '已有思维导图',
+        content: '这篇笔记已经生成过思维导图，可以直接查看；如果笔记内容有变化，也可以重新生成。',
+        confirmText: '直接查看',
+        cancelText: '重新生成',
+        success: (res) => {
+          if (res.confirm) {
+            this.setData({ showFullMindMap: true });
+          } else {
+            this.setData({
+              mindMap: null,
+              showFullMindMap: false
+            });
+            this.viewMindMap();
+          }
+        }
+      });
+      return;
+    }
+
+    if (!this.data.note || !this.data.note.content) {
+      wx.showToast({ title: '笔记内容为空', icon: 'none' });
+      return;
+    }
+
+    this.setData({ isGeneratingMindMap: true });
+    wx.showLoading({ title: 'AI分析生成中...', mask: true });
+
+    try {
+      const result = await api.summarizeNote(this.data.note.content);
+      wx.hideLoading();
+
+      console.log('🔍 AI分析返回结果:', result);
+
+      if (result) {
+        const note = this.data.note;
+        
+        if (result.summary) {
+          note.summary = result.summary;
+          console.log('✅ 摘要已设置:', result.summary);
+        }
+        if (result.tags) {
+          note.tags = result.tags;
+          console.log('✅ 标签已设置:', result.tags);
+        }
+        const mindMap = normalizeMindMap(result.mindMap || result.mindmap || result.structure || {
+          title: note.title || '知识结构',
+          children: (result.tags || []).map(tag => ({ name: tag, children: [] }))
+        }, note.title);
+        note.mindMap = mindMap;
+        console.log('✅ 思维导图已设置:', mindMap);
+
+        await api.saveNote(note);
+        
+        this.setData({
+          note,
+          mindMap,
+          mindMapPreviewSections: this.buildMindMapSections(mindMap, true),
+          mindMapSections: this.buildMindMapSections(mindMap, false),
+          showFullMindMap: true,
+          isGeneratingMindMap: false
+        });
+
+        console.log('✅ 页面数据已更新，mindMap:', this.data.mindMap);
+
+        wx.showToast({ title: '生成成功', icon: 'success' });
+      } else {
+        this.setData({ isGeneratingMindMap: false });
+        wx.showToast({ title: '生成失败', icon: 'none' });
+      }
+    } catch (error) {
+      wx.hideLoading();
+      console.error('❌ 生成失败:', error);
+      this.setData({ isGeneratingMindMap: false });
+      wx.showToast({ title: '生成失败', icon: 'none' });
+    }
   },
 
-  // 进入AI答疑
   goToQA() {
     wx.navigateTo({
       url: `/pages/qa/qa?noteId=${this.data.noteId}`
     });
   },
 
-  // 生成复习卷
   generateReview() {
-    wx.navigateTo({
-      url: `/pages/review/review?noteId=${this.data.noteId}&action=generate`
+    const app = getApp();
+    app.globalData.generateExamNoteId = this.data.noteId;
+    
+    wx.switchTab({
+      url: '/pages/review/review',
+      success: () => {
+        console.log('跳转到复习页面成功');
+      },
+      fail: (err) => {
+        console.error('跳转失败:', err);
+        wx.showToast({ title: '跳转失败', icon: 'none' });
+      }
     });
   },
 
-  // 生成背诵卡片
-  generateFlashcard() {
-    wx.showToast({
-      title: '背诵卡片功能开发中',
-      icon: 'none'
+  async generateFlashcard() {
+    if (!this.data.note || !this.data.note.content) {
+      wx.showToast({ title: '笔记内容为空', icon: 'none' });
+      return;
+    }
+
+    if (this.data.isGeneratingCards) {
+      wx.showToast({ title: '正在生成中...', icon: 'none' });
+      return;
+    }
+
+    try {
+      const api = require('../../api/api.js');
+      const cloudCards = await api.getFlashcards(this.data.noteId);
+      const embeddedCards = (this.data.note && this.data.note.flashcards) || [];
+      const existingCards = cloudCards && cloudCards.length > 0 ? cloudCards : embeddedCards;
+      
+      if (existingCards && existingCards.length > 0) {
+        wx.showModal({
+          title: '提示',
+          content: `该笔记已有${existingCards.length}张卡片，是否查看？`,
+          confirmText: '查看',
+          cancelText: '重新生成',
+          success: (res) => {
+            if (res.confirm) {
+              wx.navigateTo({
+                url: `/pages/flashcard/flashcard?noteId=${this.data.noteId}`
+              });
+            } else {
+              this.doGenerateCards();
+            }
+          }
+        });
+        return;
+      }
+      
+      this.doGenerateCards();
+    } catch (error) {
+      console.error('检查卡片失败:', error);
+      this.doGenerateCards();
+    }
+  },
+
+  async doGenerateCards() {
+    this.setData({ isGeneratingCards: true });
+    wx.showLoading({ title: '生成卡片中...', mask: true });
+
+    try {
+      const result = await api.generateFlashcards(this.data.note.content);
+      wx.hideLoading();
+
+      console.log('生成卡片结果:', result);
+
+      if (result && result.flashcards && result.flashcards.length > 0) {
+        const note = this.data.note;
+        const savedCards = await api.saveFlashcards(result.flashcards, {
+          noteId: this.data.noteId,
+          courseId: note.courseId || '',
+          courseName: note.courseName || '',
+          noteTitle: note.title || ''
+        });
+
+        note.flashcards = savedCards;
+        note.flashcardCount = savedCards.length;
+        note.updateTime = new Date().toISOString();
+        await api.saveNote(note);
+        this.setData({ note });
+
+        wx.navigateTo({
+          url: `/pages/flashcard/flashcard?noteId=${this.data.noteId}`,
+          fail: (err) => {
+            console.error('跳转失败:', err);
+            wx.showToast({ title: '跳转失败，请重试', icon: 'none' });
+          }
+        });
+      } else {
+        wx.showToast({ title: '未生成卡片', icon: 'none' });
+      }
+    } catch (error) {
+      wx.hideLoading();
+      console.error('生成卡片失败:', error);
+      wx.showToast({ title: '生成失败: ' + (error.message || '未知错误'), icon: 'none' });
+    } finally {
+      this.setData({ isGeneratingCards: false });
+    }
+  },
+
+  goToEdit() {
+    wx.navigateTo({
+      url: `/pages/note-edit/note-edit?noteId=${this.data.noteId}`
     });
   },
 

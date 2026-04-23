@@ -9,6 +9,9 @@ Page({
     isFlipped: false,
     loading: true,
     showCompleteModal: false,
+    noteId: '',
+    courseId: '',
+    progressPercent: 0,
     stats: {
       mastered: 0,
       uncertain: 0,
@@ -17,16 +20,26 @@ Page({
   },
 
   onLoad(options) {
-    // 检查是否从笔记页面传入卡片数据
+    this.noteId = options.noteId || '';
+    this.courseId = options.courseId || '';
+    this.setData({
+      noteId: this.noteId,
+      courseId: this.courseId
+    });
+    
+    console.log('背诵卡片页面加载，参数:', options);
+    
     if (options.cards) {
       try {
         const cards = JSON.parse(decodeURIComponent(options.cards));
         this.initCards(cards);
       } catch (e) {
+        console.error('解析卡片数据失败:', e);
         this.loadCardsFromStorage();
       }
     } else if (options.noteId) {
-      this.generateCardsFromNote(options.noteId);
+      this.setData({ noteId: options.noteId });
+      this.loadCardsFromStorage();
     } else {
       this.loadCardsFromStorage();
     }
@@ -39,33 +52,109 @@ Page({
 
   // 初始化卡片
   initCards(cards) {
+    const noteId = this.data.noteId || this.noteId || '';
+    const courseId = this.data.courseId || this.courseId || '';
+    
+    console.log('初始化卡片，noteId:', noteId, '卡片数量:', cards.length);
+    
     const flashcards = cards.map((card, index) => ({
-      id: index,
+      id: card.id || Date.now() + index,
+      _id: card._id || null,
       question: card.question || card.front || '问题',
       answer: card.answer || card.back || '答案',
-      status: 'new', // new, mastered, uncertain, difficult
-      courseId: card.courseId || '',
-      noteId: card.noteId || ''
+      status: card.status || 'new',
+      courseId: card.courseId || courseId || '',
+      noteId: noteId,
+      createTime: card.createTime || new Date().toISOString(),
+      updateTime: new Date().toISOString()
     }));
+
+    console.log('处理后的卡片数据:', flashcards.slice(0, 2));
 
     this.setData({
       flashcards,
+      noteId,
       currentIndex: 0,
       currentCard: flashcards[0] || {},
       loading: false,
-      isFlipped: false
+      isFlipped: false,
+      progressPercent: this.calcProgress(0, flashcards)
     });
 
-    this.saveCardsToStorage(flashcards);
+    console.log('页面数据已设置，flashcards数量:', this.data.flashcards.length);
+
+    this.saveCardsToCloud(flashcards);
   },
 
-  // 从本地存储加载卡片
-  loadCardsFromStorage() {
-    const flashcards = wx.getStorageSync('flashcards') || [];
+  async loadCardsFromStorage() {
+    const noteId = this.data.noteId || this.noteId || '';
+    const courseId = this.data.courseId || this.courseId || '';
     
-    // 如果没有卡片，生成一些示例卡片
+    console.log('加载卡片，noteId:', noteId, 'courseId:', courseId);
+    
+    try {
+      const api = require('../../api/api.js');
+      let cloudCards = [];
+      if (noteId) {
+        cloudCards = await api.getFlashcards(noteId);
+      } else if (courseId) {
+        cloudCards = await api.getFlashcardsByCourse(courseId);
+      } else {
+        cloudCards = await api.getFlashcards();
+      }
+      
+      console.log('查询到的云端卡片数量:', cloudCards ? cloudCards.length : 0);
+      console.log('云端卡片数据:', cloudCards);
+      
+      if (cloudCards && cloudCards.length > 0) {
+        this.setData({
+          flashcards: cloudCards,
+          currentIndex: 0,
+          currentCard: cloudCards[0],
+          loading: false,
+          progressPercent: this.calcProgress(0, cloudCards)
+        });
+        wx.setStorageSync('flashcards', cloudCards);
+        console.log(`✅ 加载了 ${cloudCards.length} 张卡片`);
+        return;
+      } else {
+        console.log('云端没有找到卡片');
+      }
+    } catch (error) {
+      console.warn('从云端加载卡片失败:', error);
+    }
+
+    if (noteId) {
+      try {
+        const api = require('../../api/api.js');
+        const note = await api.getNoteById(noteId);
+        const embeddedCards = note && note.flashcards ? note.flashcards : [];
+        if (embeddedCards.length > 0) {
+          this.initCards(embeddedCards);
+          return;
+        }
+      } catch (error) {
+        console.warn('从笔记内嵌卡片加载失败:', error);
+      }
+    }
+    
+    let flashcards = wx.getStorageSync('flashcards') || [];
+    if (noteId) {
+      flashcards = flashcards.filter(card => String(card.noteId || '') === String(noteId));
+    } else if (courseId) {
+      flashcards = flashcards.filter(card => String(card.courseId || '') === String(courseId));
+    }
+    console.log('本地缓存卡片数量:', flashcards.length);
+    
     if (flashcards.length === 0) {
-      this.generateDemoCards();
+      wx.showToast({ 
+        title: '暂无背诵卡片\n请从笔记页面生成', 
+        icon: 'none',
+        duration: 2000
+      });
+      setTimeout(() => {
+        wx.navigateBack();
+      }, 2000);
       return;
     }
 
@@ -73,7 +162,8 @@ Page({
       flashcards,
       currentIndex: 0,
       currentCard: flashcards[0],
-      loading: false
+      loading: false,
+      progressPercent: this.calcProgress(0, flashcards)
     });
   },
 
@@ -90,26 +180,48 @@ Page({
     this.initCards(demoCards);
   },
 
-  // 从笔记生成卡片
-  generateCardsFromNote(noteId) {
-    const notes = wx.getStorageSync('notes') || [];
-    const note = notes.find(n => n.id === noteId);
+  async generateCardsFromNote(noteId) {
+    wx.showLoading({ title: '生成卡片中...', mask: true });
 
-    if (!note) {
-      wx.showToast({ title: '笔记不存在', icon: 'none' });
-      this.loadCardsFromStorage();
-      return;
+    try {
+      const api = require('../../api/api.js');
+      const note = await api.getNoteById(noteId);
+
+      if (!note) {
+        wx.hideLoading();
+        wx.showToast({ title: '笔记不存在', icon: 'none' });
+        this.loadCardsFromStorage();
+        return;
+      }
+
+      let cards = [];
+      
+      try {
+        const result = await api.generateFlashcards(note.content);
+        if (result && result.flashcards && result.flashcards.length > 0) {
+          cards = result.flashcards;
+        } else {
+          cards = this.parseContentToCards(note.content);
+        }
+      } catch (apiError) {
+        console.warn('API生成失败，使用本地解析:', apiError);
+        cards = this.parseContentToCards(note.content);
+      }
+
+      wx.hideLoading();
+      
+      this.initCards(cards);
+
+      wx.showToast({
+        title: `生成${cards.length}张卡片`,
+        icon: 'success'
+      });
+    } catch (error) {
+      wx.hideLoading();
+      console.error('生成卡片失败:', error);
+      const cards = this.parseContentToCards('');
+      this.initCards(cards);
     }
-
-    // 模拟从笔记内容生成卡片
-    // 实际项目中这里应该调用 Coze API
-    const cards = this.parseContentToCards(note.content);
-    this.initCards(cards);
-
-    wx.showToast({
-      title: `生成${cards.length}张卡片`,
-      icon: 'success'
-    });
   },
 
   // 解析内容生成卡片（简单实现）
@@ -161,13 +273,23 @@ Page({
     this.nextCard();
   },
 
-  // 更新卡片状态
-  updateCardStatus(status) {
+  async updateCardStatus(status) {
     const { flashcards, currentIndex } = this.data;
     flashcards[currentIndex].status = status;
+    flashcards[currentIndex].updateTime = new Date().toISOString();
     
     this.setData({ flashcards });
-    this.saveCardsToStorage(flashcards);
+    wx.setStorageSync('flashcards', flashcards);
+    
+    try {
+      const api = require('../../api/api.js');
+      const card = flashcards[currentIndex];
+      if (card._id) {
+        await api.saveFlashcard(card);
+      }
+    } catch (error) {
+      console.error('更新卡片状态失败:', error);
+    }
   },
 
   // 下一张卡片
@@ -178,7 +300,8 @@ Page({
       this.setData({
         currentIndex: currentIndex + 1,
         currentCard: flashcards[currentIndex + 1],
-        isFlipped: false
+        isFlipped: false,
+        progressPercent: this.calcProgress(currentIndex + 1, flashcards)
       });
     } else {
       // 完成一轮
@@ -194,7 +317,8 @@ Page({
       this.setData({
         currentIndex: currentIndex - 1,
         currentCard: flashcards[currentIndex - 1],
-        isFlipped: false
+        isFlipped: false,
+        progressPercent: this.calcProgress(currentIndex - 1, flashcards)
       });
     }
   },
@@ -213,7 +337,8 @@ Page({
       flashcards,
       currentIndex: 0,
       currentCard: flashcards[0],
-      isFlipped: false
+      isFlipped: false,
+      progressPercent: this.calcProgress(0, flashcards)
     });
 
     wx.showToast({ title: '已打乱顺序', icon: 'none' });
@@ -259,7 +384,8 @@ Page({
       currentIndex: 0,
       currentCard: difficultCards[0],
       isFlipped: false,
-      showCompleteModal: false
+      showCompleteModal: false,
+      progressPercent: this.calcProgress(0, difficultCards)
     });
   },
 
@@ -276,13 +402,39 @@ Page({
       currentIndex: 0,
       currentCard: flashcards[0],
       isFlipped: false,
-      showCompleteModal: false
+      showCompleteModal: false,
+      progressPercent: this.calcProgress(0, flashcards)
     });
 
     this.saveCardsToStorage(flashcards);
   },
 
-  // 保存卡片到本地存储
+  async saveCardsToCloud(flashcards) {
+    wx.setStorageSync('flashcards', flashcards);
+    
+    const api = require('../../api/api.js');
+    const savedIds = [];
+    
+    for (const card of flashcards) {
+      try {
+        const savedCard = await api.saveFlashcard({
+          ...card,
+          updateTime: new Date().toISOString()
+        });
+        if (savedCard && savedCard._id) {
+          card._id = savedCard._id;
+        }
+        savedIds.push(card.id);
+        console.log('卡片保存成功:', card.id);
+      } catch (error) {
+        console.error('保存卡片到云端失败:', error);
+      }
+    }
+    
+    wx.setStorageSync('flashcards', flashcards);
+    console.log(`已保存 ${savedIds.length} 张卡片`);
+  },
+
   saveCardsToStorage(flashcards) {
     wx.setStorageSync('flashcards', flashcards);
   },
@@ -325,8 +477,7 @@ Page({
   },
 
   // 计算进度百分比
-  progressPercent() {
-    const { currentIndex, flashcards } = this.data;
+  calcProgress(currentIndex, flashcards) {
     if (flashcards.length === 0) return 0;
     return ((currentIndex + 1) / flashcards.length) * 100;
   }

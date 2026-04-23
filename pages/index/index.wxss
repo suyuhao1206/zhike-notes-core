@@ -173,3 +173,84 @@
   font-size: 28rpx;
   color: var(--text-placeholder);
 }
+
+.empty-hint {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 12rpx;
+}
+
+/* 快速创建浮动按钮 */
+.quick-create-fab {
+  position: fixed;
+  right: 32rpx;
+  bottom: 120rpx;
+  width: 112rpx;
+  height: 112rpx;
+  background: linear-gradient(135deg, #1890FF 0%, #36CFC9 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(24, 144, 255, 0.4);
+  z-index: 100;
+}
+
+.quick-create-fab .fab-icon {
+  font-size: 56rpx;
+  color: #fff;
+  font-weight: 300;
+}
+
+/* 快速创建菜单 */
+.quick-create-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+}
+
+.menu-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.menu-content {
+  position: absolute;
+  right: 32rpx;
+  bottom: 250rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 16rpx;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
+  min-width: 200rpx;
+}
+
+.menu-content .menu-item {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  border-radius: 12rpx;
+  transition: background 0.2s;
+}
+
+.menu-content .menu-item:active {
+  background: #f5f5f5;
+}
+
+.menu-content .menu-icon {
+  font-size: 40rpx;
+  margin-right: 20rpx;
+}
+
+.menu-content .menu-text {
+  font-size: 28rpx;
+  color: #333;
+}
+

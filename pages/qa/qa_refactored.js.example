@@ -1,0 +1,219 @@
+/**
+ * 重构后的AI答疑页面示例
+ * 展示如何使用新架构
+ */
+
+const { getOrchestrator } = require('../../core/orchestrator')
+const UnifiedContext = require('../../core/context')
+
+Page({
+  data: {
+    noteId: null,
+    note: null,
+    messages: [],
+    inputValue: '',
+    isSending: false,
+    
+    mode: 'chat',
+    modes: [
+      { value: 'chat', label: '聊天', icon: 'chat' },
+      { value: 'deep_solve', label: '深度解题', icon: 'solve' },
+      { value: 'quiz_generation', label: '生成测验', icon: 'quiz' }
+    ],
+    
+    enabledTools: ['rag', 'reason'],
+    tools: [
+      { name: 'rag', label: '知识库检索', enabled: true },
+      { name: 'reason', label: '深度推理', enabled: true },
+      { name: 'web_search', label: '网络搜索', enabled: false }
+    ],
+    
+    stages: [],
+    currentStage: '',
+    stageMessage: ''
+  },
+
+  onLoad(options) {
+    const noteId = options.noteId
+    this.setData({ noteId })
+
+    if (noteId) {
+      this.loadNote(noteId)
+    }
+
+    this.initOrchestrator()
+  },
+
+  async initOrchestrator() {
+    const orchestrator = getOrchestrator()
+    
+    orchestrator.on('stage', (data) => {
+      this.setData({
+        currentStage: data.stage,
+        stageMessage: data.message
+      })
+    })
+
+    orchestrator.on('content', (data) => {
+      this.appendMessage({
+        type: 'system',
+        content: data.content,
+        time: this.getCurrentTime()
+      })
+    })
+
+    orchestrator.on('error', (data) => {
+      console.error('Orchestrator error:', data.error)
+      wx.showToast({
+        title: data.error,
+        icon: 'none'
+      })
+    })
+
+    await orchestrator.init()
+  },
+
+  async loadNote(noteId) {
+    const api = require('../../api/api.js')
+    try {
+      const note = await api.getNoteById(noteId)
+      this.setData({ note })
+    } catch (error) {
+      console.error('Failed to load note:', error)
+    }
+  },
+
+  onModeChange(e) {
+    this.setData({ mode: e.detail.value })
+  },
+
+  onToolToggle(e) {
+    const { name } = e.currentTarget.dataset
+    const tools = this.data.tools.map(t => {
+      if (t.name === name) {
+        return { ...t, enabled: !t.enabled }
+      }
+      return t
+    })
+    
+    const enabledTools = tools.filter(t => t.enabled).map(t => t.name)
+    
+    this.setData({ tools, enabledTools })
+  },
+
+  async sendQuestion() {
+    const inputValue = this.data.inputValue.trim()
+    if (!inputValue) {
+      wx.showToast({ title: '请输入问题', icon: 'none' })
+      return
+    }
+
+    if (this.data.isSending) {
+      return
+    }
+
+    const userMessage = {
+      type: 'user',
+      content: inputValue,
+      time: this.getCurrentTime()
+    }
+
+    this.setData({
+      messages: [...this.data.messages, userMessage],
+      inputValue: '',
+      isSending: true,
+      stages: [],
+      currentStage: 'processing',
+      stageMessage: '处理中...'
+    })
+
+    try {
+      const orchestrator = getOrchestrator()
+      
+      const context = new UnifiedContext({
+        userMessage: inputValue,
+        notebookContext: this.data.note ? this.data.note.content : '',
+        activeCapability: this.data.mode,
+        enabledTools: this.data.enabledTools,
+        knowledgeBases: this.data.note ? [this.data.note.courseName] : [],
+        conversationHistory: this.getConversationHistory()
+      })
+
+      const result = await orchestrator.processRequest(context)
+
+      const aiMessage = {
+        type: 'ai',
+        content: result.content,
+        time: this.getCurrentTime(),
+        metadata: result.metadata
+      }
+
+      this.setData({
+        messages: [...this.data.messages, aiMessage],
+        isSending: false,
+        currentStage: '',
+        stageMessage: ''
+      })
+
+    } catch (error) {
+      console.error('Failed to process question:', error)
+      
+      const errorMessage = {
+        type: 'error',
+        content: `处理失败：${error.message}`,
+        time: this.getCurrentTime()
+      }
+
+      this.setData({
+        messages: [...this.data.messages, errorMessage],
+        isSending: false,
+        currentStage: '',
+        stageMessage: ''
+      })
+    }
+  },
+
+  appendMessage(message) {
+    this.setData({
+      messages: [...this.data.messages, message]
+    })
+  },
+
+  getConversationHistory() {
+    return this.data.messages.map(m => ({
+      role: m.type === 'user' ? 'user' : 'assistant',
+      content: m.content
+    }))
+  },
+
+  onInputChange(e) {
+    this.setData({ inputValue: e.detail.value })
+  },
+
+  getCurrentTime() {
+    const now = new Date()
+    return `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`
+  },
+
+  copyAnswer(e) {
+    const content = e.currentTarget.dataset.content
+    wx.setClipboardData({
+      data: content,
+      success: () => {
+        wx.showToast({ title: '已复制', icon: 'success' })
+      }
+    })
+  },
+
+  clearMessages() {
+    wx.showModal({
+      title: '提示',
+      content: '确定要清空所有对话记录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          this.setData({ messages: [] })
+        }
+      }
+    })
+  }
+})

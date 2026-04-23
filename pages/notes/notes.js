@@ -18,7 +18,7 @@ Page({
   onLoad(options) {
     const courseId = options.courseId;
     if (courseId) {
-      this.setData({ selectedCourse: parseInt(courseId) });
+      this.setData({ selectedCourse: courseId });
     }
     this.loadData();
   },
@@ -97,6 +97,9 @@ Page({
   },
 
   // 过滤笔记
+  stopPropagation() {
+  },
+
   filterNotes() {
     const { notes, searchKeyword, selectedCourse } = this.data;
 
@@ -104,7 +107,7 @@ Page({
 
     // 按课程过滤
     if (selectedCourse) {
-      filtered = filtered.filter(n => n.courseId === selectedCourse);
+      filtered = filtered.filter(n => String(n.courseId || '') === String(selectedCourse));
     }
 
     // 按关键词过滤
@@ -156,8 +159,38 @@ Page({
 
   // 新建笔记
   createNote() {
-    wx.navigateTo({
-      url: '/pages/record/record'
+    wx.showActionSheet({
+      itemList: ['新建笔记', '录音转写', '拍图识别'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          const courseId = this.data.selectedCourse || '';
+          wx.navigateTo({
+            url: `/pages/note-edit/note-edit${courseId ? '?courseId=' + courseId : ''}`
+          });
+        } else if (res.tapIndex === 1) {
+          wx.switchTab({
+            url: '/pages/record/record'
+          });
+        } else if (res.tapIndex === 2) {
+          wx.navigateTo({
+            url: '/pages/ocr/ocr'
+          });
+        }
+      }
     });
+  },
+
+  editNote(e) {
+    const noteId = e.currentTarget.dataset.id;
+    wx.navigateTo({
+      url: `/pages/note-edit/note-edit?noteId=${noteId}`
+    });
+  },
+
+  onReachBottom() {
+    if (this.data.hasMore && !this.data.loading) {
+      this.setData({ currentPage: this.data.currentPage + 1 });
+      this.loadNotes();
+    }
   }
 });

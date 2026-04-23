@@ -30,7 +30,10 @@ Page({
     this.setData({ isLoading: true });
 
     try {
-      const mistakes = await api.getMistakes();
+      const mistakes = (await api.getMistakes()).map(item => ({
+        ...item,
+        id: item._id || item.id
+      }));
 
       // 更新统计
       const stats = {
@@ -97,8 +100,17 @@ Page({
   // 查看错题详情
   viewMistake(e) {
     const mistakeId = e.currentTarget.dataset.id;
-    wx.navigateTo({
-      url: `/pages/mistakeDetail/mistakeDetail?id=${mistakeId}`
+    const mistake = this.data.mistakes.find(item => String(item._id || item.id || '') === String(mistakeId));
+    if (!mistake) {
+      wx.showToast({ title: '未找到错题', icon: 'none' });
+      return;
+    }
+
+    wx.showModal({
+      title: '错题详情',
+      content: `${mistake.question || ''}\n\n你的答案：${mistake.userAnswer || mistake.wrongAnswer || ''}\n正确答案：${mistake.correctAnswer || mistake.answer || ''}\n\n解析：${mistake.explanation || '暂无解析'}`,
+      content: `${mistake.question || ''}\n\n你的答案：${mistake.userAnswer || mistake.wrongAnswer || ''}\n正确答案：${mistake.correctAnswer || mistake.answer || ''}\n\n解析：${mistake.explanation || '暂无解析'}`,
+      showCancel: false
     });
   },
 
@@ -108,12 +120,13 @@ Page({
 
     try {
       let mistakes = wx.getStorageSync('mistakes') || [];
-      const index = mistakes.findIndex(m => m.id == mistakeId);
+      const index = mistakes.findIndex(m => String(m._id || m.id || '') === String(mistakeId));
 
       if (index > -1) {
         mistakes[index].fixed = true;
         mistakes[index].fixedTime = new Date().toISOString();
         wx.setStorageSync('mistakes', mistakes);
+        await api.updateMistake(mistakeId, mistakes[index]);
 
         wx.showToast({
           title: '已标记为掌握',
@@ -134,9 +147,7 @@ Page({
   // 重新练习
   retryMistake(e) {
     const mistakeId = e.currentTarget.dataset.id;
-    wx.navigateTo({
-      url: `/pages/mistakeDetail/mistakeDetail?id=${mistakeId}&mode=practice`
-    });
+    this.viewMistake({ currentTarget: { dataset: { id: mistakeId } } });
   },
 
   // 删除错题
@@ -147,11 +158,12 @@ Page({
       title: '确认删除',
       content: '确定要删除这道错题吗？',
       confirmColor: '#ff4d4f',
-      success: (res) => {
+      success: async (res) => {
         if (res.confirm) {
           let mistakes = wx.getStorageSync('mistakes') || [];
-          mistakes = mistakes.filter(m => m.id != mistakeId);
+          mistakes = mistakes.filter(m => String(m._id || m.id || '') !== String(mistakeId));
           wx.setStorageSync('mistakes', mistakes);
+          await api.deleteMistake(mistakeId);
 
           wx.showToast({
             title: '删除成功',

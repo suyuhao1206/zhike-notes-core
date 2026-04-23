@@ -1,0 +1,62 @@
+<view class="container">
+  <view class="form">
+    <view class="form-item">
+      <text class="label">课程</text>
+      <picker 
+        mode="selector" 
+        range="{{courses}}" 
+        range-key="name" 
+        value="{{courseIndex}}"
+        bindchange="onCourseChange"
+      >
+        <view class="picker">
+          {{selectedCourse.name || '选择课程'}}
+          <text class="arrow">▼</text>
+        </view>
+      </picker>
+    </view>
+
+    <view class="form-item">
+      <input 
+        class="title-input"
+        type="text"
+        placeholder="输入笔记标题"
+        value="{{title}}"
+        bindinput="onTitleInput"
+      />
+    </view>
+
+    <view class="form-item content-item">
+      <textarea 
+        class="content-input"
+        placeholder="开始记录你的笔记..."
+        value="{{content}}"
+        bindinput="onContentInput"
+        maxlength="-1"
+        auto-height
+      />
+      <view class="word-count">
+        <text>{{wordCount}} 字</text>
+        <text wx:if="{{isAutoSaving}}" class="saving">保存中...</text>
+        <text wx:elif="{{lastSaveTime}}" class="saved">已保存 {{lastSaveTime}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="toolbar">
+    <view class="tool-btn" bindtap="insertTemplate">
+      <text class="tool-icon">📋</text>
+      <text class="tool-text">模板</text>
+    </view>
+    <view class="tool-btn" bindtap="generateSummary">
+      <text class="tool-icon">🤖</text>
+      <text class="tool-text">AI摘要</text>
+    </view>
+  </view>
+
+  <view class="footer">
+    <button class="btn-save" bindtap="saveNote" loading="{{isSaving}}" disabled="{{isSaving}}">
+      保存笔记
+    </button>
+  </view>
+</view>

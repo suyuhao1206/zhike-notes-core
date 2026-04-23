@@ -1,0 +1,192 @@
+.search-container {
+  min-height: 100vh;
+  background: #f5f5f5;
+}
+
+/* 搜索框 */
+.search-box {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 30rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #eee;
+}
+
+.search-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: #f5f5f5;
+  border-radius: 32rpx;
+  padding: 16rpx 24rpx;
+  margin-right: 20rpx;
+}
+
+.search-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: 16rpx;
+  opacity: 0.5;
+}
+
+.search-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333;
+}
+
+.clear-icon {
+  width: 32rpx;
+  height: 32rpx;
+  opacity: 0.4;
+}
+
+.search-btn {
+  font-size: 28rpx;
+  color: #07c160;
+  padding: 10rpx 20rpx;
+}
+
+/* 搜索结果 */
+.search-result {
+  padding: 20rpx;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 100rpx;
+  color: #999;
+  font-size: 28rpx;
+}
+
+.loading-spinner {
+  width: 40rpx;
+  height: 40rpx;
+  border: 4rpx solid #f3f3f3;
+  border-top: 4rpx solid #07c160;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20rpx;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.empty-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 150rpx 0;
+  color: #999;
+  font-size: 28rpx;
+}
+
+.empty-icon {
+  width: 200rpx;
+  height: 200rpx;
+  margin-bottom: 20rpx;
+  opacity: 0.5;
+}
+
+/* 笔记列表 */
+.note-list {
+  background: #fff;
+  border-radius: 12rpx;
+}
+
+.note-item {
+  padding: 30rpx;
+  border-bottom: 1rpx solid #f5f5f5;
+}
+
+.note-item:last-child {
+  border-bottom: none;
+}
+
+.note-title {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 12rpx;
+}
+
+.note-summary {
+  font-size: 26rpx;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 16rpx;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.note-meta {
+  display: flex;
+  align-items: center;
+  font-size: 24rpx;
+}
+
+.note-course {
+  color: #07c160;
+  background: rgba(7, 193, 96, 0.1);
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+  margin-right: 20rpx;
+}
+
+.note-time {
+  color: #999;
+}
+
+/* 搜索建议 */
+.search-suggestions {
+  padding: 30rpx;
+}
+
+.section {
+  margin-bottom: 40rpx;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #333;
+}
+
+.clear-btn {
+  font-size: 26rpx;
+  color: #999;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+}
+
+.tag {
+  font-size: 26rpx;
+  color: #666;
+  background: #fff;
+  padding: 12rpx 28rpx;
+  border-radius: 28rpx;
+  border: 1rpx solid #eee;
+}
+
+.tag.hot {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+  border-color: rgba(255, 107, 107, 0.3);
+}

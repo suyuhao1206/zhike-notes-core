@@ -1,0 +1,266 @@
+/* pages/note/note.wxss */
+.container {
+  padding: 20rpx;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 300rpx;
+}
+
+.loading-text {
+  color: #999;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+}
+
+/* 头部信息 */
+.note-header .header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.course-name {
+  font-size: 24rpx;
+  color: #1890FF;
+  background: rgba(24, 144, 255, 0.1);
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+}
+
+.create-time {
+  font-size: 22rpx;
+  color: #999;
+}
+
+.note-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 12rpx;
+}
+
+.note-meta {
+  display: flex;
+  gap: 20rpx;
+  margin-bottom: 16rpx;
+}
+
+.meta-item {
+  font-size: 24rpx;
+  color: #666;
+}
+
+.tag-list {
+  display: flex;
+  gap: 10rpx;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 22rpx;
+  color: #52C41A;
+  background: rgba(82, 196, 26, 0.1);
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+}
+
+/* 操作按钮 */
+.action-bar {
+  display: flex;
+  justify-content: space-around;
+  padding: 20rpx;
+  background: #fff;
+  border-radius: 12rpx;
+  margin-bottom: 20rpx;
+}
+
+.action-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.action-icon {
+  font-size: 36rpx;
+}
+
+.action-text {
+  font-size: 24rpx;
+  color: #666;
+}
+
+/* 笔记内容 */
+.note-content .content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.content-title {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.edit-btn {
+  font-size: 24rpx;
+  color: #1890FF;
+}
+
+.edit-container {
+  margin-top: 20rpx;
+}
+
+.edit-input {
+  width: 100%;
+  min-height: 400rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
+  padding: 20rpx;
+  border: 1rpx solid #E8E8E8;
+  border-radius: 8rpx;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 20rpx;
+  margin-top: 20rpx;
+}
+
+.btn-cancel, .btn-save {
+  font-size: 28rpx;
+  padding: 12rpx 32rpx;
+  border-radius: 8rpx;
+}
+
+.btn-cancel {
+  background: #F5F5F5;
+  color: #666;
+}
+
+.btn-save {
+  background: #1890FF;
+  color: #fff;
+}
+
+.content-body {
+  font-size: 28rpx;
+  line-height: 1.8;
+  color: #333;
+}
+
+/* 思维导图预览 */
+.mindmap-preview .preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.preview-title {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.preview-more {
+  font-size: 24rpx;
+  color: #1890FF;
+}
+
+.mindmap-tree {
+  padding: 10rpx;
+}
+
+.tree-node.root {
+  background: rgba(24, 144, 255, 0.1);
+  border-radius: 8rpx;
+  padding: 16rpx;
+}
+
+.node-title {
+  font-size: 26rpx;
+  font-weight: bold;
+  color: #1890FF;
+}
+
+.node-children {
+  margin-top: 12rpx;
+  padding-left: 20rpx;
+}
+
+.tree-node.child {
+  margin-bottom: 12rpx;
+  background: rgba(82, 196, 26, 0.1);
+  border-radius: 6rpx;
+  padding: 10rpx;
+}
+
+.tree-node.child .node-title {
+  color: #52C41A;
+  font-size: 24rpx;
+}
+
+.node-leafs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 8rpx;
+  padding-left: 16rpx;
+}
+
+.leaf {
+  font-size: 22rpx;
+  color: #666;
+  background: #F5F5F5;
+  padding: 4rpx 10rpx;
+  border-radius: 4rpx;
+}
+
+/* 更多操作 */
+.more-actions .more-title {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 16rpx;
+}
+
+.more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.more-item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx;
+  background: #F5F5F5;
+  border-radius: 8rpx;
+}
+
+.more-icon {
+  font-size: 32rpx;
+}
+
+.more-text {
+  font-size: 26rpx;
+  color: #333;
+}

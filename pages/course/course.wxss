@@ -62,6 +62,11 @@
   color: var(--text-primary);
 }
 
+.section-action {
+  font-size: 26rpx;
+  color: #1890FF;
+}
+
 .section-count {
   font-size: 24rpx;
   color: var(--text-secondary);

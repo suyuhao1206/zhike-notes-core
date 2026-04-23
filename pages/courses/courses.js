@@ -2,6 +2,10 @@
 const api = require('../../api/api.js');
 const util = require('../../utils/util.js');
 
+function sameId(a, b) {
+  return String(a || '') === String(b || '');
+}
+
 Page({
   data: {
     courses: [],
@@ -36,9 +40,11 @@ Page({
       const allNotes = await api.getNotes();
 
       const coursesWithCount = courses.map(course => {
-        const noteCount = allNotes.filter(n => n.courseId === course.id).length;
+        const courseId = course._id || course.id;
+        const noteCount = allNotes.filter(n => sameId(n.courseId, courseId) || sameId(n.courseId, course.id)).length;
         return {
           ...course,
+          id: courseId,
           noteCount,
           lastStudyTime: course.updateTime
         };
@@ -107,6 +113,7 @@ Page({
       } else {
         // 添加新课程
         await api.saveCourse({
+          id: `course_${Date.now()}`,
           name,
           createTime: new Date().toISOString()
         });
@@ -138,10 +145,7 @@ Page({
     const confirmed = await util.confirm('删除后无法恢复，确定删除吗？', '确认删除');
     if (confirmed) {
       try {
-        // 从本地存储删除
-        let courses = wx.getStorageSync('courses') || [];
-        courses = courses.filter(c => c.id != courseId);
-        wx.setStorageSync('courses', courses);
+        await api.deleteCourse(courseId);
 
         wx.showToast({ title: '删除成功', icon: 'success' });
         this.loadCourses();
@@ -155,7 +159,7 @@ Page({
   viewCourseNotes(e) {
     const courseId = e.currentTarget.dataset.id;
     wx.navigateTo({
-      url: `/pages/notes/notes?courseId=${courseId}`
+      url: `/pages/course/course?id=${courseId}`
     });
   }
 });

@@ -15,8 +15,16 @@ const developConfig = {
         noteSummary: '',
         qaAssistant: '',
         examGenerator: '',
-        flashcardGen: ''
+        flashcardGen: '',
+        ocrVision: '',
+        audioTranscribe: ''
       }
+    },
+    xfyun: {
+      appId: '',
+      apiKey: '',
+      apiSecret: '',
+      baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
     },
     openai: {
       baseUrl: 'https://api.openai.com/v1',
@@ -41,8 +49,16 @@ const releaseConfig = {
         noteSummary: '',
         qaAssistant: '',
         examGenerator: '',
-        flashcardGen: ''
+        flashcardGen: '',
+        ocrVision: '',
+        audioTranscribe: ''
       }
+    },
+    xfyun: {
+      appId: '',
+      apiKey: '',
+      apiSecret: '',
+      baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
     },
     openai: {
       baseUrl: 'https://api.openai.com/v1',

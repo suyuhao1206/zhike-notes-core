@@ -23,6 +23,45 @@
     </view>
   </view>
 
+  <view class="config-card">
+    <view class="card-header">
+      <text class="card-title">讯飞录音转写配置</text>
+    </view>
+    <view class="input-group">
+      <text class="input-label">讯飞 APPID</text>
+      <input
+        class="input-field"
+        type="text"
+        placeholder="请输入讯飞 APPID"
+        value="{{xfyun.appId}}"
+        data-field="appId"
+        bindinput="onXfyunInput"
+      />
+    </view>
+    <view class="input-group">
+      <text class="input-label">讯飞 APIKey</text>
+      <input
+        class="input-field"
+        type="text"
+        placeholder="请输入讯飞 APIKey"
+        value="{{xfyun.apiKey}}"
+        data-field="apiKey"
+        bindinput="onXfyunInput"
+      />
+    </view>
+    <view class="input-group">
+      <text class="input-label">讯飞 APISecret</text>
+      <input
+        class="input-field"
+        type="text"
+        placeholder="请输入讯飞 APISecret"
+        value="{{xfyun.apiSecret}}"
+        data-field="apiSecret"
+        bindinput="onXfyunInput"
+      />
+    </view>
+  </view>
+
   <!-- Bot配置 -->
   <view class="config-card">
     <view class="card-header">
@@ -49,6 +88,6 @@
 
   <!-- 提示信息 -->
   <view class="tips">
-    <text class="tips-text">💡 提示：Token和Bot ID可在 Coze 平台获取</text>
+    <text class="tips-text">💡 提示：Coze 和讯飞密钥都会保存在本地缓存中，不再依赖云函数环境变量</text>
   </view>
 </view>

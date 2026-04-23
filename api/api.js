@@ -3,6 +3,9 @@
  */
 
 const DB = require('../utils/db.js');
+const { hmacSha1Base64 } = require('../utils/crypto.js');
+
+const XFYUN_BASE_URL = 'https://office-api-ist-dx.iflyaisol.com';
 
 function getAIConfig() {
   const app = getApp();
@@ -32,6 +35,23 @@ function getCozeConfig() {
     token: coze.apiKey || '',
     bots: coze.bots || {}
   };
+}
+
+function getXfyunConfig() {
+  const xfyun = getProviderConfig('xfyun');
+  return {
+    appId: xfyun.appId || '',
+    apiKey: xfyun.apiKey || '',
+    apiSecret: xfyun.apiSecret || '',
+    baseUrl: xfyun.baseUrl || XFYUN_BASE_URL
+  };
+}
+
+function maskSecret(value, left = 4, right = 4) {
+  const text = String(value || '');
+  if (!text) return '(empty)';
+  if (text.length <= left + right) return `${text.slice(0, 1)}***${text.slice(-1)}`;
+  return `${text.slice(0, left)}***${text.slice(-right)}`;
 }
 
 /**
@@ -76,6 +96,212 @@ function parseCozeResponse(response) {
   return response;
 }
 
+function parseJsonFromText(text) {
+  if (!text || typeof text !== 'string') return null;
+  const cleaned = text
+    .replace(/```json/gi, '```')
+    .replace(/```/g, '')
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch (e2) {}
+    }
+  }
+
+  return null;
+}
+
+function normalizeQuestionType(type) {
+  const raw = String(type || '').toLowerCase();
+  if (raw.includes('choice') || raw.includes('select') || raw.includes('选择')) return '选择题';
+  if (raw.includes('blank') || raw.includes('fill') || raw.includes('填空')) return '填空题';
+  if (raw.includes('short') || raw.includes('简答')) return '简答题';
+  return type || '选择题';
+}
+
+function cleanLooseField(value) {
+  return String(value || '')
+    .replace(/^[\s"'“”]+|[\s"'“”,，]+$/g, '')
+    .replace(/鈫\?/g, '\n')
+    .trim();
+}
+
+function parseLooseExamText(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  const titleMatch = text.match(/"title"\s*:\s*"([\s\S]*?)"\s*,\s*"questions"/);
+  const title = titleMatch ? cleanLooseField(titleMatch[1]) : 'AI复习卷';
+  const questions = [];
+  const blocks = text.split(/\{\s*"type"\s*:/).slice(1);
+
+  blocks.forEach((part, index) => {
+    const block = `"type":${part}`;
+    const typeMatch = block.match(/"type"\s*:\s*"([\s\S]*?)"\s*,\s*"content"/);
+    const contentMatch = block.match(/"content"\s*:\s*"([\s\S]*?)"\s*,\s*"(?:options|answer)"/);
+    const optionsMatch = block.match(/"options"\s*:\s*\[([\s\S]*?)\]\s*,\s*"answer"/);
+    const answerMatch = block.match(/"answer"\s*:\s*"([\s\S]*?)"\s*,\s*"explanation"/);
+    const explanationMatch = block.match(/"explanation"\s*:\s*"([\s\S]*?)(?:"\s*\}|\}\s*,|\}\s*\])/);
+
+    if (!typeMatch || !contentMatch) return;
+
+    const options = optionsMatch
+      ? optionsMatch[1]
+        .split(/",\s*"/)
+        .map(item => cleanLooseField(item.replace(/^\[/, '').replace(/\]$/, '')))
+        .filter(Boolean)
+      : [];
+
+    questions.push({
+      id: `q_${Date.now()}_${index}`,
+      type: normalizeQuestionType(cleanLooseField(typeMatch[1])),
+      content: cleanLooseField(contentMatch[1]),
+      options,
+      answer: cleanLooseField(answerMatch ? answerMatch[1] : ''),
+      explanation: cleanLooseField(explanationMatch ? explanationMatch[1] : '')
+    });
+  });
+
+  return questions.length > 0 ? { title, questions } : null;
+}
+
+function normalizeExamData(result) {
+  if (!result) return null;
+
+  let exam = result.exam || result;
+  if (!exam.questions) {
+    const rawText = result.text || result.answer || result.content;
+    const parsed = parseJsonFromText(rawText) || parseLooseExamText(rawText);
+    exam = parsed ? (parsed.exam || parsed) : exam;
+  }
+
+  if (!exam || !Array.isArray(exam.questions) || exam.questions.length === 0) {
+    return null;
+  }
+
+  const questions = exam.questions.map((question, index) => {
+    const type = normalizeQuestionType(question.type || question.questionType);
+    const rawOptions = Array.isArray(question.options) ? question.options : [];
+    const options = rawOptions.map((option, optionIndex) => {
+      const text = String(option || '').trim();
+      if (/^[A-D][.、]/.test(text)) return text;
+      return `${String.fromCharCode(65 + optionIndex)}. ${text}`;
+    });
+
+    return {
+      id: question.id || `q_${Date.now()}_${index}`,
+      type,
+      content: question.content || question.question || question.title || '',
+      options,
+      answer: question.answer || question.correctAnswer || '',
+      explanation: question.explanation || question.analysis || question.reason || ''
+    };
+  }).filter(question => question.content && (question.type !== '选择题' || question.options.length > 0));
+
+  if (questions.length === 0) return null;
+
+  return {
+    title: exam.title || 'AI复习卷',
+    questions
+  };
+}
+
+function stringifyContent(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => stringifyContent(item)).filter(Boolean).join('\n');
+  }
+  if (value && typeof value === 'object') {
+    if (value.name || value.content) {
+      return [value.name, value.content].filter(Boolean).join('：');
+    }
+    return Object.keys(value)
+      .map(key => `${key}：${stringifyContent(value[key])}`)
+      .filter(Boolean)
+      .join('\n');
+  }
+  return String(value || '').trim();
+}
+
+function normalizeEmergencyData(result) {
+  if (!result) return null;
+
+  let data = result;
+  if (typeof result === 'string') {
+    data = parseJsonFromText(result) || { text: result };
+  } else if (!result.sections) {
+    const rawText = result.text || result.answer || result.content;
+    const parsed = parseJsonFromText(rawText);
+    if (parsed) data = parsed;
+  }
+
+  if (data.sections && Array.isArray(data.sections)) {
+    return {
+      title: data.title || '急救模式',
+      sections: data.sections
+        .map(section => ({
+          title: section.title || section.name || '重点',
+          content: stringifyContent(section.content || section.text || section.items)
+        }))
+        .filter(section => section.content)
+    };
+  }
+
+  const sections = [];
+  const pushSection = (title, content) => {
+    const normalized = stringifyContent(content);
+    if (normalized) sections.push({ title, content: normalized });
+  };
+
+  pushSection('核心概述', data.summary || data.overview || data.text || data.answer || data.content);
+  pushSection('关键知识点', data.keyPoints || data.points || data.highlights);
+  pushSection('公式/规则', data.formulas || data.rules);
+  pushSection('例题/思路', data.examples || data.methods || data.steps);
+  pushSection('考前速记', data.tips || data.suggestions || data.memoryTips);
+
+  if (sections.length === 0) {
+    const rawText = stringifyContent(result.text || result.answer || result.content || result);
+    if (rawText) {
+      sections.push({
+        title: '核心内容',
+        content: rawText
+      });
+    }
+  }
+
+  return {
+    title: data.title || '急救模式 - 核心要点',
+    sections
+  };
+}
+
+function normalizeFlashcardList(result) {
+  if (!result) return [];
+
+  if (Array.isArray(result)) return result;
+
+  if (Array.isArray(result.flashcards)) return result.flashcards;
+  if (Array.isArray(result.cards)) return result.cards;
+
+  const text = result.text || result.answer || result.content;
+  const parsed = parseJsonFromText(text);
+  if (parsed) {
+    if (Array.isArray(parsed.flashcards)) return parsed.flashcards;
+    if (Array.isArray(parsed.cards)) return parsed.cards;
+    if (Array.isArray(parsed)) return parsed;
+  }
+
+  return [];
+}
+
+function sameId(a, b) {
+  return String(a || '') === String(b || '');
+}
+
 /**
  * 调用 Coze Bot API
  * @param {string} botType Bot 类型 (noteSummary, qaAssistant, examGenerator, flashcardGen)
@@ -90,12 +316,41 @@ function callCozeBot(botType, query, options = {}) {
   return callCompatibleLLM(query, options);
 }
 
+function callCozeBotWithImage(botType, query, fileId, options = {}) {
+  const provider = getActiveProvider();
+  if (provider !== 'coze') {
+    return callCompatibleLLM(`${query}\n\n图片文件ID：${fileId}`, options);
+  }
+
+  const content = JSON.stringify([
+    {
+      type: 'text',
+      text: query
+    },
+    {
+      type: 'image',
+      file_id: fileId
+    }
+  ]);
+
+  return callCozeBotInternal(botType, content, {
+    ...options,
+    contentType: 'object_string'
+  });
+}
+
 function callCozeBotInternal(botType, query, options = {}) {
   const config = getProviderConfig('coze');
   const botId = (config.bots || {})[botType];
 
+  console.log('Coze 配置:', {
+    hasApiKey: !!config.apiKey,
+    botType: botType,
+    botId: botId
+  });
+
   if (!config.apiKey) {
-    return Promise.reject(new Error('AI API Key 未配置'));
+    return Promise.reject(new Error('Coze API Token 未配置'));
   }
 
   if (!botId) {
@@ -103,8 +358,10 @@ function callCozeBotInternal(botType, query, options = {}) {
   }
 
   return new Promise((resolve, reject) => {
+    console.log("🚀 【V3接口】开始请求，问题:", query);
+    
     wx.request({
-      url: `${config.baseUrl}/chat/completions`,
+      url: 'https://api.coze.cn/v3/chat',
       method: 'POST',
       header: {
         'Authorization': `Bearer ${config.apiKey}`,
@@ -112,19 +369,145 @@ function callCozeBotInternal(botType, query, options = {}) {
       },
       data: {
         bot_id: botId,
-        user: options.userId || 'user',
-        query: query,
-        stream: false
+        user_id: options.userId || 'wx_miniprogram_user',
+        additional_messages: [
+          {
+            role: 'user',
+            content: query,
+            content_type: options.contentType || 'text'
+          }
+        ],
+        stream: false,
+        auto_save_history: true
       },
+      timeout: 60000,
       success: (res) => {
-        if (res.statusCode === 200 && res.data) {
-          resolve(parseCozeResponse(res.data));
+        console.log("📦 【V3接口】完整响应:", JSON.stringify(res.data, null, 2));
+        
+        if (res.statusCode === 200 && res.data.code === 0) {
+          const data = res.data.data;
+          
+          if (data.status === 'completed' && data.messages) {
+            const aiMsg = data.messages.find(m => m.role === 'assistant');
+            if (aiMsg?.content) {
+              console.log("✅ 【V3接口】直接拿到回答:", aiMsg.content);
+              return resolve({ text: aiMsg.content, answer: aiMsg.content });
+            }
+          }
+          
+          if (data.status === 'in_progress') {
+            console.log("⏳ 【V3接口】AI生成中，启动查询...");
+            return pollV3Result(config.apiKey, data.id, data.conversation_id, resolve, reject);
+          }
+          
+          let aiAnswer = '';
+          if (data.messages && Array.isArray(data.messages)) {
+            for (const msg of data.messages) {
+              if (
+                msg.role === 'assistant' || 
+                msg.type === 'answer' ||
+                msg.role === 'bot' ||
+                msg.type === 'bot_message'
+              ) {
+                aiAnswer = msg.content || msg.text || '';
+                if (aiAnswer) {
+                  console.log('找到 AI 回答:', aiAnswer);
+                  break;
+                }
+              }
+            }
+          } else if (data.answer) {
+            aiAnswer = data.answer;
+          } else if (data.content) {
+            aiAnswer = data.content;
+          }
+          
+          if (aiAnswer) {
+            resolve({ text: aiAnswer, answer: aiAnswer });
+          } else {
+            console.error('提取失败，data 结构为:', data);
+            reject(new Error('AI 回答结构异常，请查看控制台日志'));
+          }
         } else {
-          reject(new Error((res.data && (res.data.msg || (res.data.error && res.data.error.message))) || '请求失败'));
+          reject(new Error(res.data?.msg || `接口返回错误，状态码：${res.statusCode}`));
         }
       },
-      fail: reject
+      fail: (err) => {
+        console.error('Coze API 请求失败:', err);
+        reject(new Error(`网络请求失败：${err.errMsg}`));
+      }
     });
+  });
+}
+
+function pollV3Result(apiKey, chatId, conversationId, resolve, reject, retryCount = 0) {
+  if (retryCount > 60) {
+    return reject(new Error("AI响应超时，请稍后重试"));
+  }
+
+  setTimeout(() => {
+    wx.request({
+      url: `https://api.coze.cn/v3/chat/retrieve?chat_id=${chatId}&conversation_id=${conversationId}`,
+      method: 'GET',
+      timeout: 30000,
+      header: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      success: (res) => {
+        console.log(`🔍 【V3查询】第${retryCount + 1}次:`, JSON.stringify(res.data, null, 2));
+        
+        if (res.statusCode === 200 && res.data.code === 0) {
+          const data = res.data.data;
+          
+          if (data.status === 'completed') {
+            fetchV3Messages(apiKey, chatId, conversationId, resolve, reject);
+          } else if (data.status === 'in_progress') {
+            return pollV3Result(apiKey, chatId, conversationId, resolve, reject, retryCount + 1);
+          } else {
+            return reject(new Error(`查询失败，状态：${data.status}`));
+          }
+        } else {
+          reject(new Error(res.data?.msg || "查询请求失败"));
+        }
+      },
+      fail: (err) => reject(err)
+    });
+  }, 1500);
+}
+
+function fetchV3Messages(apiKey, chatId, conversationId, resolve, reject) {
+  wx.request({
+    url: `https://api.coze.cn/v3/chat/message/list?chat_id=${chatId}&conversation_id=${conversationId}`,
+    method: 'GET',
+    header: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    success: (res) => {
+      console.log("📋 【V3消息列表】:", JSON.stringify(res.data, null, 2));
+      
+      if (res.statusCode === 200 && res.data.code === 0) {
+        const messages = res.data.data;
+        
+        if (messages && Array.isArray(messages)) {
+          for (const msg of messages) {
+            if (msg.role === 'assistant' || msg.type === 'answer') {
+              const content = msg.content || msg.text || '';
+              if (content) {
+                console.log("✅ 【V3消息】拿到回答:", content);
+                return resolve({ text: content, answer: content });
+              }
+            }
+          }
+        }
+        
+        reject(new Error("未找到回答内容"));
+      } else {
+        reject(new Error(res.data?.msg || "获取消息失败"));
+      }
+    },
+    fail: (err) => reject(err)
   });
 }
 
@@ -169,7 +552,84 @@ function callCompatibleLLM(query, options = {}) {
  * @param {string} filePath 音频文件路径
  * @param {object} options 其他参数
  */
+function transcribeAudioWithXfyun(filePath, options = {}) {
+  const config = getXfyunConfig();
+  if (!config.appId || !config.apiKey || !config.apiSecret) {
+    return Promise.reject(new Error('讯飞密钥未配置，请先在设置页填写 APPID、APIKey 和 APISecret'));
+  }
+
+  return readLocalFileAsArrayBuffer(filePath).then(audioBuffer => {
+    const fileName = guessAudioFileName(filePath);
+    const signatureRandom = randomString(16);
+    const uploadParams = {
+      appId: config.appId,
+      accessKeyId: config.apiKey,
+      dateTime: formatXfyunDateTime(new Date()),
+      signatureRandom,
+      fileSize: String(audioBuffer.byteLength || audioBuffer.length || 0),
+      fileName,
+      language: options.language || 'autodialect',
+      durationCheckDisable: 'true',
+      audioMode: 'fileStream',
+      eng_smoothproc: options.smooth === false ? 'false' : 'true',
+      eng_colloqproc: options.colloq === false ? 'false' : 'true',
+      pd: options.pd || 'edu'
+    };
+
+    console.log('🎙️ 讯飞转写请求摘要:', {
+      appId: maskSecret(config.appId, 3, 2),
+      apiKey: maskSecret(config.apiKey, 6, 4),
+      apiSecret: maskSecret(config.apiSecret, 6, 4),
+      baseUrl: config.baseUrl,
+      fileName,
+      fileSize: uploadParams.fileSize,
+      language: uploadParams.language,
+      pd: uploadParams.pd,
+      dateTime: uploadParams.dateTime,
+      signatureRandom
+    });
+
+    return requestXfyun('/v2/upload', uploadParams, config.apiSecret, audioBuffer, {
+      'Content-Type': 'application/octet-stream'
+    }, config.baseUrl).then(uploadResult => {
+      if (String(uploadResult.code) !== '000000') {
+        throw new Error(uploadResult.descInfo || '讯飞上传失败');
+      }
+
+      const orderId = uploadResult.content && uploadResult.content.orderId;
+      if (!orderId) {
+        throw new Error('讯飞未返回 orderId');
+      }
+
+      return pollXfyunResult(orderId, signatureRandom, config, uploadResult.content.taskEstimateTime).then(result => ({
+        text: extractXfyunText(result),
+        duration: options.duration || 0,
+        provider: 'xfyun',
+        orderId
+      }));
+    });
+  });
+}
+
 function transcribeAudio(filePath, options = {}) {
+  if (options.provider === 'xfyun' || options.preferXfyun !== false) {
+    return transcribeAudioWithXfyun(filePath, options).catch(error => {
+      console.warn('讯飞语音转写失败:', error);
+      if (!options.allowCozeFallback) throw error;
+      return transcribeAudioByCoze(filePath, options).catch(cozeError => {
+        console.warn('Coze 语音转写失败，改用模拟转写:', cozeError);
+        return Promise.resolve(createMockTranscriptionResult(options, cozeError));
+      });
+    });
+  }
+
+  return transcribeAudioByCoze(filePath, options).catch(error => {
+    console.warn('Coze 语音转写失败，改用模拟转写:', error);
+    return Promise.resolve(createMockTranscriptionResult(options, error));
+  });
+}
+
+function transcribeAudioByCoze(filePath, options = {}) {
   const provider = getActiveProvider();
   const config = getProviderConfig(provider);
 
@@ -206,13 +666,14 @@ function transcribeAudio(filePath, options = {}) {
             const fileId = data.data?.id || data.id;
 
             // 调用转写 Bot
-            const botId = (config.bots || {}).noteSummary;
+            const botType = (config.bots || {}).audioTranscribe ? 'audioTranscribe' : 'noteSummary';
+            const botId = (config.bots || {})[botType];
             if (!botId) {
               reject(new Error('笔记总结 Bot 未配置'));
               return;
             }
 
-            callCozeBot('noteSummary', `请将以下音频转写为文字：file_id:${fileId}`, options)
+            callCozeBot(botType, `请将以下音频转写为课堂笔记文字，只输出转写正文和必要的分段标题：file_id:${fileId}`, options)
               .then(result => {
                 resolve({
                   text: result.text || result.answer || result,
@@ -232,6 +693,193 @@ function transcribeAudio(filePath, options = {}) {
       }
     });
   });
+}
+
+function createMockTranscriptionResult(options = {}, sourceError) {
+  if (sourceError) {
+    console.warn('使用模拟录音转写结果:', sourceError);
+  } else {
+    console.log('使用模拟录音转写结果');
+  }
+
+  return {
+    text: '这是自动生成的模拟录音转写内容。当前真实音频转写服务暂不可用，因此先为你生成一份占位课堂笔记内容。\n\n1. 本节课讲解了核心概念与基本原理。\n2. 重点内容包括定义、应用场景和常见题型。\n3. 建议课后根据课堂录音补充细节，并整理成正式笔记。',
+    duration: options.duration || 0,
+    provider: 'mock'
+  };
+}
+
+function readLocalFileAsArrayBuffer(filePath) {
+  return new Promise((resolve, reject) => {
+    if (!wx.getFileSystemManager) {
+      reject(new Error('当前基础库不支持读取本地录音文件'));
+      return;
+    }
+
+    wx.getFileSystemManager().readFile({
+      filePath,
+      success: res => resolve(res.data),
+      fail: err => reject(new Error(err.errMsg || '读取录音文件失败'))
+    });
+  });
+}
+
+function buildSignedQuery(params) {
+  return Object.keys(params)
+    .filter(key => params[key] !== undefined && params[key] !== null && params[key] !== '')
+    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(String(params[key]))}`)
+    .join('&');
+}
+
+function signXfyunRequest(apiSecret, params) {
+  const baseString = Object.keys(params)
+    .filter(key => key !== 'signature' && params[key] !== undefined && params[key] !== null && params[key] !== '')
+    .sort()
+    .map(key => `${key}=${encodeURIComponent(String(params[key]))}`)
+    .join('&');
+  return hmacSha1Base64(apiSecret, baseString);
+}
+
+function requestXfyun(path, params, apiSecret, data, header = {}, baseUrl = XFYUN_BASE_URL) {
+  const signature = signXfyunRequest(apiSecret, params);
+  const query = buildSignedQuery(params);
+
+  console.log('🧾 讯飞签名摘要:', {
+    path,
+    accessKeyId: maskSecret(params.accessKeyId, 6, 4),
+    appId: maskSecret(params.appId, 3, 2),
+    orderId: params.orderId || '',
+    dateTime: params.dateTime,
+    signatureRandom: params.signatureRandom,
+    signature: maskSecret(signature, 8, 6)
+  });
+
+  return new Promise((resolve, reject) => {
+    wx.request({
+      url: `${baseUrl}${path}?${query}`,
+      method: 'POST',
+      data,
+      timeout: 60000,
+      header: {
+        ...header,
+        signature
+      },
+      success: res => {
+        if (res.statusCode >= 200 && res.statusCode < 300 && res.data) {
+          let payload = res.data;
+          if (typeof payload === 'string') {
+            try {
+              payload = JSON.parse(payload);
+            } catch (error) {
+              reject(new Error(`讯飞响应解析失败：${payload}`));
+              return;
+            }
+          }
+          resolve(payload);
+          return;
+        }
+        reject(new Error((res.data && res.data.descInfo) || `讯飞接口请求失败：${res.statusCode}`));
+      },
+      fail: err => reject(new Error(err.errMsg || '讯飞接口请求失败'))
+    });
+  });
+}
+
+async function pollXfyunResult(orderId, signatureRandom, config, estimateTime) {
+  const initialDelay = Math.min(Math.max(Number(estimateTime || 3000), 3000), 10000);
+  await sleep(initialDelay);
+
+  for (let index = 0; index < 36; index++) {
+    const params = {
+      accessKeyId: config.apiKey,
+      dateTime: formatXfyunDateTime(new Date()),
+      signatureRandom,
+      orderId,
+      resultType: 'transfer'
+    };
+
+    const result = await requestXfyun('/v2/getResult', params, config.apiSecret, '{}', {
+      'Content-Type': 'application/json'
+    }, config.baseUrl);
+
+    if (String(result.code) !== '000000') {
+      const code = String(result.code || '');
+      if (code !== '100013') {
+        throw new Error(result.descInfo || `讯飞查询失败：${code}`);
+      }
+    }
+
+    const orderInfo = result.content && result.content.orderInfo;
+    const status = orderInfo && Number(orderInfo.status);
+
+    if (status === 4 && result.content && result.content.orderResult) {
+      return result;
+    }
+    if (status === -1) {
+      throw new Error(`讯飞转写失败，failType=${orderInfo.failType}`);
+    }
+
+    await sleep(3000);
+  }
+
+  throw new Error('讯飞转写超时，请稍后重试');
+}
+
+function extractXfyunText(result) {
+  const orderResult = result && result.content && result.content.orderResult;
+  if (!orderResult) return '';
+
+  let parsed = orderResult;
+  if (typeof orderResult === 'string') {
+    try {
+      parsed = JSON.parse(orderResult);
+    } catch (error) {
+      return String(orderResult || '').trim();
+    }
+  }
+
+  const lattice = parsed.lattice2 || parsed.lattice || [];
+  const segments = [];
+
+  lattice.forEach(item => {
+    const jsonBest = item.json_1best || item.json_1Best;
+    if (!jsonBest) return;
+
+    try {
+      const best = typeof jsonBest === 'string' ? JSON.parse(jsonBest) : jsonBest;
+      const words = (((best.st || {}).rt || [])[0] || {}).ws || [];
+      const text = words.map(word => (((word.cw || [])[0] || {}).w || '')).join('');
+      if (text) segments.push(text);
+    } catch (error) {
+      // Ignore malformed segment and keep extracting the rest.
+    }
+  });
+
+  return segments.join('').replace(/\s+/g, ' ').trim();
+}
+
+function formatXfyunDateTime(date) {
+  const pad = value => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}+0800`;
+}
+
+function randomString(length) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let text = '';
+  for (let index = 0; index < length; index++) {
+    text += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return text;
+}
+
+function guessAudioFileName(filePath) {
+  const cleanPath = String(filePath || '').split('?')[0];
+  const name = cleanPath.split('/').pop() || `record_${Date.now()}.mp3`;
+  return name.includes('.') ? name : `${name}.mp3`;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -274,7 +922,31 @@ ${content}
   }
 }`;
 
-  return callCozeBot('noteSummary', query, options);
+  return callCozeBot('noteSummary', query, options).then(result => {
+    console.log('summarizeNote 原始返回:', result);
+    
+    if (result && result.text && typeof result.text === 'string') {
+      try {
+        const parsed = JSON.parse(result.text);
+        console.log('解析后的数据:', parsed);
+        return parsed;
+      } catch (e) {
+        console.log('JSON解析失败，尝试提取JSON');
+        try {
+          const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            console.log('提取并解析后的数据:', parsed);
+            return parsed;
+          }
+        } catch (e2) {
+          console.error('JSON提取失败:', e2);
+        }
+      }
+    }
+    
+    return result;
+  });
 }
 
 /**
@@ -289,26 +961,99 @@ function askQuestion(question, noteContext = '', options = {}) {
   const botId = (config.bots || {}).qaAssistant;
 
   if (!config.apiKey || (provider === 'coze' && !botId)) {
-    // 模拟返回
     console.log('使用模拟数据：AI答疑');
+    const mockAnswer = generateSmartMockAnswer(question, noteContext);
     return Promise.resolve({
-      answer: '这是模拟的 AI 回答。在实际配置 Coze API 后，这里将返回基于笔记内容的智能回答。',
-      references: []
+      answer: mockAnswer,
+      references: [],
+      hasAI: false
     });
   }
 
-  const query = noteContext
-    ? `基于以下笔记内容回答问题：
+  const systemPrompt = `你是学习助手，回答问题需遵守：
+1. 回答控制在150字以内，简洁明了
+2. 禁止输出任何链接、URL、网址
+3. 禁止推荐外部资源或参考资料
+4. 直接给出答案，不要开场白和结束语
+5. 重点内容用分点或序号呈现`;
 
-笔记内容：
-${noteContext}
+  const query = noteContext
+    ? `笔记内容：
+${noteContext.substring(0, 500)}
 
 问题：${question}
 
-请提供详细且准确的回答。`
-    : question;
+请简短回答，禁止输出链接。`
+    : `${question}\n\n请简短回答，控制在150字内，禁止输出任何链接。`;
 
-  return callCozeBot('qaAssistant', query, options);
+  return callCozeBot('qaAssistant', query, { ...options, systemPrompt }).then(result => ({
+    answer: cleanAnswer(result.text || result.answer || result),
+    references: [],
+    hasAI: true
+  }));
+}
+
+function cleanAnswer(text) {
+  if (!text) return text;
+  
+  let cleaned = text
+    .replace(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi, '[链接已移除]')
+    .replace(/www\.[^\s<>"{}|\\^`\[\]]+/gi, '[链接已移除]')
+    .replace(/参考.*?:\s*/gi, '')
+    .replace(/参考资料.*?\n/gi, '')
+    .replace(/推荐阅读.*?\n/gi, '')
+    .replace(/相关链接.*?\n/gi, '');
+  
+  return cleaned.trim();
+}
+
+function generateSmartMockAnswer(question, context) {
+  const questionLower = question.toLowerCase();
+  
+  if (context && context.length > 50) {
+    const keywords = extractKeywords(question);
+    const relevantParts = findRelevantContext(context, keywords);
+    
+    if (relevantParts.length > 0) {
+      return `相关内容：\n${relevantParts.slice(0, 2).join('\n')}`;
+    }
+  }
+  
+  if (questionLower.includes('什么是') || questionLower.includes('定义')) {
+    return `概念要点：\n1. 核心定义\n2. 关键特征\n3. 应用场景`;
+  }
+  
+  if (questionLower.includes('怎么') || questionLower.includes('如何')) {
+    return `解决步骤：\n1. 明确要求\n2. 选择方法\n3. 逐步实施`;
+  }
+  
+  if (questionLower.includes('为什么') || questionLower.includes('原因')) {
+    return `主要原因：\n1. 核心原理\n2. 关键因素`;
+  }
+  
+  return `建议：\n1. 查阅笔记相关内容\n2. 理解核心概念`;
+}
+
+function extractKeywords(text) {
+  const stopWords = ['的', '是', '在', '了', '和', '与', '或', '等', '这', '那', '有', '为', '对', '把', '被', '让', '给', '向', '从', '到', '中', '上', '下', '不', '都', '很', '也', '就', '着', '过', '会', '能', '要', '想', '什么', '怎么', '如何', '为什么', '哪', '谁', '多少'];
+  const words = text.split(/[\s，。！？、；：""''（）【】《》]+/);
+  return words.filter(word => word.length > 1 && !stopWords.includes(word));
+}
+
+function findRelevantContext(context, keywords) {
+  const sentences = context.split(/[。\n]/);
+  const relevant = [];
+  
+  for (const sentence of sentences) {
+    if (sentence.trim().length < 10) continue;
+    
+    const matchCount = keywords.filter(kw => sentence.includes(kw)).length;
+    if (matchCount > 0) {
+      relevant.push(sentence.trim());
+    }
+  }
+  
+  return relevant.slice(0, 3);
 }
 
 /**
@@ -369,7 +1114,14 @@ ${content}
   ]
 }`;
 
-  return callCozeBot('examGenerator', query, options);
+  return callCozeBot('examGenerator', query, options).then(result => {
+    const exam = normalizeExamData(result);
+    if (!exam) {
+      console.warn('复习卷解析失败，原始返回:', result);
+      return result;
+    }
+    return exam;
+  });
 }
 
 /**
@@ -404,7 +1156,10 @@ ${content}
   ]
 }`;
 
-  return callCozeBot('flashcardGen', query, options);
+  return callCozeBot('flashcardGen', query, options).then(result => ({
+    ...result,
+    flashcards: normalizeFlashcardList(result)
+  }));
 }
 
 /**
@@ -420,7 +1175,7 @@ function generateEmergency(content, options = {}) {
   if (!config.apiKey || (provider === 'coze' && !botId)) {
     // 模拟返回
     console.log('使用模拟数据：急救模式');
-    return Promise.resolve({
+    return Promise.resolve(normalizeEmergencyData({
       title: '急救模式 - 核心要点',
       summary: '这是模拟的急救模式内容，将笔记压缩为最核心的要点。',
       keyPoints: [
@@ -431,7 +1186,7 @@ function generateEmergency(content, options = {}) {
       formulas: [
         { name: '公式1', content: '公式内容' }
       ]
-    });
+    }));
   }
 
   const query = `请将以下笔记内容压缩为"急救模式"（2页纸精华）：
@@ -452,7 +1207,14 @@ ${content}
   "formulas": [{"name": "公式名", "content": "公式内容"}]
 }`;
 
-  return callCozeBot('noteSummary', query, options);
+  return callCozeBot('noteSummary', query, options).then(result => {
+    const emergency = normalizeEmergencyData(result);
+    if (!emergency || emergency.sections.length === 0) {
+      console.warn('急救模式解析失败，原始返回:', result);
+      return result;
+    }
+    return emergency;
+  });
 }
 
 /**
@@ -461,6 +1223,13 @@ ${content}
  */
 async function saveCourse(course) {
   const data = { ...course };
+  delete data._openid;
+  delete data._createTime;
+  delete data._updateTime;
+  
+  if (!data.id && !data._id) {
+    data.id = `course_${Date.now()}`;
+  }
   if (course.id && !course._id) {
     data.id = course.id;
   }
@@ -477,12 +1246,20 @@ async function getCourses() {
   return await DB.list('courses', { limit: 100 });
 }
 
+async function deleteCourse(courseId) {
+  return await DB.remove('courses', courseId);
+}
+
 /**
  * 保存笔记
  * @param {object} note 笔记信息
  */
 async function saveNote(note) {
   const data = { ...note };
+  delete data._openid;
+  delete data._createTime;
+  delete data._updateTime;
+  
   if (note.id && !note._id) {
     data.id = note.id;
   }
@@ -497,8 +1274,22 @@ async function saveNote(note) {
  * @param {number} courseId 课程ID（可选）
  */
 async function getNotes(courseId) {
-  const where = courseId ? { courseId } : {};
-  return await DB.list('notes', { where, limit: 100 });
+  const notes = await DB.list('notes', { limit: 500 });
+  if (!courseId) return notes;
+
+  const courseIds = new Set([String(courseId)]);
+  try {
+    const courses = await getCourses();
+    const matchedCourse = courses.find(course => sameId(course.id, courseId) || sameId(course._id, courseId));
+    if (matchedCourse) {
+      if (matchedCourse.id) courseIds.add(String(matchedCourse.id));
+      if (matchedCourse._id) courseIds.add(String(matchedCourse._id));
+    }
+  } catch (error) {
+    console.warn('匹配课程ID失败，使用原始courseId筛选:', error);
+  }
+
+  return notes.filter(note => courseIds.has(String(note.courseId || '')));
 }
 
 /**
@@ -536,6 +1327,14 @@ async function getMistakes() {
   return await DB.list('mistakes', { limit: 100 });
 }
 
+async function updateMistake(mistakeId, data) {
+  return await DB.update('mistakes', mistakeId, data);
+}
+
+async function deleteMistake(mistakeId) {
+  return await DB.remove('mistakes', mistakeId);
+}
+
 /**
  * 搜索笔记
  * @param {string} query 搜索关键词
@@ -546,6 +1345,20 @@ async function searchNotes(query, options = {}) {
 
   let notes = await DB.list('notes', { limit: 100 });
   const lowerQuery = query.toLowerCase();
+  const courseIds = new Set(courseId ? [String(courseId)] : []);
+
+  if (courseId) {
+    try {
+      const courses = await getCourses();
+      const matchedCourse = courses.find(course => sameId(course.id, courseId) || sameId(course._id, courseId));
+      if (matchedCourse) {
+        if (matchedCourse.id) courseIds.add(String(matchedCourse.id));
+        if (matchedCourse._id) courseIds.add(String(matchedCourse._id));
+      }
+    } catch (error) {
+      console.warn('搜索时匹配课程ID失败，使用原始courseId:', error);
+    }
+  }
 
   const filtered = notes.filter(note => {
     const matchTitle = note.title && note.title.toLowerCase().includes(lowerQuery);
@@ -554,7 +1367,7 @@ async function searchNotes(query, options = {}) {
 
     let matches = matchTitle || matchContent || matchTags;
 
-    if (courseId && note.courseId !== courseId) matches = false;
+    if (courseId && !courseIds.has(String(note.courseId || ''))) matches = false;
     if (tag && (!note.tags || !note.tags.includes(tag))) matches = false;
 
     return matches;
@@ -566,11 +1379,113 @@ async function searchNotes(query, options = {}) {
   };
 }
 
+async function saveFlashcard(flashcard) {
+  const data = { ...flashcard };
+  delete data._openid;
+  delete data._createTime;
+  delete data._updateTime;
+  
+  if (flashcard.id && !flashcard._id) {
+    data.id = flashcard.id;
+  }
+  if (flashcard._id) {
+    try {
+      return await DB.update('flashcards', flashcard._id, data);
+    } catch (error) {
+      console.warn('云端更新卡片失败，已保留本地缓存:', error);
+      wx.setStorageSync('flashcards', upsertLocalFlashcard(data));
+      return data;
+    }
+  }
+  try {
+    return await DB.add('flashcards', data);
+  } catch (error) {
+    console.warn('云端保存卡片失败，已保留本地缓存:', error);
+    wx.setStorageSync('flashcards', upsertLocalFlashcard(data));
+    return data;
+  }
+}
+
+function upsertLocalFlashcard(card) {
+  const cards = wx.getStorageSync('flashcards') || [];
+  const cardId = card._id || card.id;
+  const index = cards.findIndex(item => String(item._id || item.id || '') === String(cardId || ''));
+  if (index > -1) {
+    cards[index] = { ...cards[index], ...card };
+  } else {
+    cards.unshift(card);
+  }
+  return cards;
+}
+
+async function saveFlashcards(cards, meta = {}) {
+  const savedCards = [];
+  const now = new Date().toISOString();
+
+  for (let index = 0; index < (cards || []).length; index++) {
+    const card = cards[index] || {};
+    const normalized = {
+      id: card.id || `${meta.noteId || meta.courseId || 'card'}_${Date.now()}_${index}`,
+      question: card.question || card.front || card.title || '',
+      answer: card.answer || card.back || card.content || '',
+      status: card.status || 'new',
+      noteId: card.noteId || meta.noteId || '',
+      courseId: card.courseId || meta.courseId || '',
+      courseName: card.courseName || meta.courseName || '',
+      noteTitle: card.noteTitle || meta.noteTitle || '',
+      createTime: card.createTime || now,
+      updateTime: now
+    };
+
+    if (!normalized.question && !normalized.answer) continue;
+    savedCards.push(await saveFlashcard(normalized));
+  }
+
+  return savedCards;
+}
+
+async function getFlashcards(noteId) {
+  let allCards = [];
+  try {
+    allCards = await DB.list('flashcards', { limit: 500 });
+  } catch (error) {
+    console.warn('云端读取卡片失败，改用本地缓存:', error);
+    allCards = wx.getStorageSync('flashcards') || [];
+  }
+
+  if (noteId) {
+    return allCards.filter(card => 
+      String(card.noteId) === String(noteId) || card.noteId === noteId
+    );
+  }
+  return allCards;
+}
+
+async function getFlashcardsByCourse(courseId) {
+  const allCards = await getFlashcards();
+  const courseIds = new Set([String(courseId || '')]);
+  try {
+    const courses = await getCourses();
+    const matchedCourse = courses.find(course => sameId(course.id, courseId) || sameId(course._id, courseId));
+    if (matchedCourse) {
+      if (matchedCourse.id) courseIds.add(String(matchedCourse.id));
+      if (matchedCourse._id) courseIds.add(String(matchedCourse._id));
+    }
+  } catch (error) {
+    console.warn('匹配卡片课程ID失败，使用原始courseId筛选:', error);
+  }
+  return allCards.filter(card => courseIds.has(String(card.courseId || '')));
+}
+
+async function deleteFlashcard(flashcardId) {
+  return await DB.remove('flashcards', flashcardId);
+}
+
 module.exports = {
-  // AI 配置与能力
   getAIConfig,
   getCozeConfig,
   callCozeBot,
+  callCozeBotWithImage,
   transcribeAudio,
   summarizeNote,
   askQuestion,
@@ -578,16 +1493,23 @@ module.exports = {
   generateFlashcards,
   generateEmergency,
 
-  // 本地数据操作
   saveCourse,
   getCourses,
+  deleteCourse,
   saveNote,
   getNotes,
   getNoteById,
   deleteNote,
   saveMistake,
   getMistakes,
+  updateMistake,
+  deleteMistake,
 
-  // 搜索
-  searchNotes
+  searchNotes,
+  
+  saveFlashcard,
+  saveFlashcards,
+  getFlashcards,
+  getFlashcardsByCourse,
+  deleteFlashcard
 };

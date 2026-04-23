@@ -1,0 +1,28 @@
+<view class="welcome-container">
+  <!-- 步骤指示器 -->
+  <view class="step-indicator">
+    <view class="step-dot {{index === currentStep ? 'active' : ''}}" 
+          wx:for="{{steps}}" 
+          wx:key="index"></view>
+  </view>
+
+  <!-- 内容区域 -->
+  <view class="content-area">
+    <view class="icon-wrapper">
+      <text class="step-icon">{{steps[currentStep].icon}}</text>
+    </view>
+    <text class="step-title">{{steps[currentStep].title}}</text>
+    <text class="step-desc">{{steps[currentStep].desc}}</text>
+  </view>
+
+  <!-- 按钮区域 -->
+  <view class="button-area">
+    <button class="btn-primary" bindtap="nextStep">
+      {{currentStep === steps.length - 1 ? '开始使用' : '下一步'}}
+    </button>
+    <button class="btn-text" bindtap="skipWelcome">跳过引导</button>
+  </view>
+
+  <!-- 版本信息 -->
+  <view class="version">智课笔记 v1.0</view>
+</view>

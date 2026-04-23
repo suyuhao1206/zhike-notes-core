@@ -35,7 +35,7 @@
       wx:for="{{filteredNotes}}"
       wx:key="id"
       bindtap="viewNote"
-      data-id="{{item.id}}"
+      data-id="{{item._id || item.id}}"
     >
       <view class="note-header">
         <text class="note-course">{{item.courseName}}</text>
@@ -46,7 +46,7 @@
       <view class="note-footer">
         <text class="note-duration" wx:if="{{item.duration}}">⏱️ {{item.duration}}秒</text>
         <view class="note-actions" catchtap="stopPropagation">
-          <text class="action-btn delete" catchtap="deleteNote" data-id="{{item.id}}">删除</text>
+          <text class="action-btn delete" catchtap="deleteNote" data-id="{{item._id || item.id}}">删除</text>
         </view>
       </view>
     </view>

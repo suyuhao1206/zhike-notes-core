@@ -29,6 +29,9 @@
       <view class="result-content">
         <text class="result-text" user-select>{{recognizedText}}</text>
       </view>
+      <view class="ocr-notice" wx:if="{{ocrNotice}}">
+        <text>{{ocrNotice}}</text>
+      </view>
     </view>
 
     <!-- 保存选项 -->

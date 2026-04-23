@@ -1,3 +1,9 @@
+const api = require('../../api/api.js');
+
+function sameId(a, b) {
+  return String(a || '') === String(b || '');
+}
+
 Page({
   data: {
     courseId: null,
@@ -17,76 +23,114 @@ Page({
     }
   },
 
-  // 加载课程信息
+  onShow() {
+    this.loadNoteList();
+  },
+
   async loadCourseInfo() {
-    // TODO: 从 API 加载课程信息
-    const courseInfo = {
-      id: this.data.courseId,
-      name: '高等数学',
-      noteCount: 12,
-      createTime: '2026-03-01'
-    };
-    
-    this.setData({ courseInfo });
-  },
-
-  // 加载笔记列表
-  async loadNoteList() {
-    // TODO: 从 API 加载笔记列表
-    const noteList = [
-      { 
-        id: 1, 
-        title: '不定积分的概念和计算方法', 
-        summary: '本节讲解了不定积分的基本概念和计算方法...',
-        createTime: '2 小时前',
-        tag: '第 3 章'
-      },
-      { 
-        id: 2, 
-        title: '定积分的应用', 
-        summary: '定积分在几何和物理中的应用...',
-        createTime: '昨天',
-        tag: '第 4 章'
+    try {
+      const courses = await api.getCourses();
+      const course = courses.find(c => sameId(c._id, this.data.courseId) || sameId(c.id, this.data.courseId));
+      
+      if (course) {
+        this.setData({ 
+          courseInfo: {
+            id: course._id || course.id,
+            name: course.name,
+            noteCount: 0,
+            createTime: course.createTime || ''
+          }
+        });
       }
-    ];
-    
-    this.setData({ noteList });
+    } catch (error) {
+      console.error('加载课程信息失败:', error);
+    }
   },
 
-  // 开始录音
+  async loadNoteList() {
+    try {
+      const notes = await api.getNotes(this.data.courseId);
+      
+      const noteList = notes.map(note => ({
+        ...note,
+        createTime: this.formatTime(note.createTime || note.updateTime),
+        summary: note.summary || (note.content ? note.content.substring(0, 50) + '...' : '暂无摘要')
+      }));
+      
+      const courseInfo = { ...this.data.courseInfo, noteCount: noteList.length };
+      
+      this.setData({ noteList, courseInfo });
+    } catch (error) {
+      console.error('加载笔记列表失败:', error);
+    }
+  },
+
+  formatTime(timeStr) {
+    if (!timeStr) return '未知时间';
+    const date = new Date(timeStr);
+    const now = new Date();
+    const diff = now - date;
+    
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (hours < 24) return `${hours}小时前`;
+    if (days < 7) return `${days}天前`;
+    
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  },
+
   startRecord() {
-    wx.navigateTo({
-      url: '/pages/record/record?courseId=' + this.data.courseId
+    const app = getApp();
+    app.globalData.recordCourseId = this.data.courseId;
+    wx.switchTab({
+      url: '/pages/record/record'
     });
   },
 
-  // AI 答疑
   askQuestion() {
     wx.navigateTo({
-      url: '/pages/qa/qa?courseId=' + this.data.courseId
+      url: `/pages/qa/qa?courseId=${this.data.courseId}`
     });
   },
 
-  // 生成试卷
   generateExam() {
+    const notes = this.data.noteList;
+    if (notes.length === 0) {
+      wx.showToast({ title: '请先创建笔记', icon: 'none' });
+      return;
+    }
+    const latestNote = notes[0];
     wx.navigateTo({
-      url: '/pages/review/review?courseId=' + this.data.courseId
+      url: `/pages/review/review?noteId=${latestNote._id || latestNote.id}&action=generate`
     });
   },
 
-  // 复习卡片
   reviewCards() {
-    wx.showToast({
-      title: '功能开发中',
-      icon: 'none'
+    const notes = this.data.noteList;
+    if (notes.length === 0) {
+      wx.showToast({ title: '请先创建笔记', icon: 'none' });
+      return;
+    }
+    const latestNote = notes[0];
+    wx.navigateTo({
+      url: `/pages/flashcard/flashcard?noteId=${latestNote._id || latestNote.id}`
     });
   },
 
-  // 进入笔记详情
   goToNote(e) {
     const noteId = e.currentTarget.dataset.id;
     wx.navigateTo({
       url: `/pages/note/note?id=${noteId}`
+    });
+  },
+
+  createNote() {
+    wx.navigateTo({
+      url: `/pages/note-edit/note-edit?courseId=${this.data.courseId}`
     });
   }
 })

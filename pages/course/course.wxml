@@ -32,24 +32,25 @@
   <view class="section">
     <view class="section-header">
       <text class="section-title">课程笔记</text>
-      <text class="section-count">共{{noteList.length}}条</text>
+      <text class="section-action" bindtap="createNote">+ 新建</text>
     </view>
     
     <view class="note-list">
-      <view class="note-item card" wx:for="{{noteList}}" wx:key="id" bindtap="goToNote" data-id="{{item.id}}">
+      <view class="note-item card" wx:for="{{noteList}}" wx:key="id" bindtap="goToNote" data-id="{{item._id || item.id}}">
         <view class="note-header">
           <text class="note-title">{{item.title}}</text>
           <text class="note-time">{{item.createTime}}</text>
         </view>
         <text class="note-summary">{{item.summary}}</text>
-        <view class="note-footer">
-          <text class="note-tag">{{item.tag}}</text>
+        <view class="note-footer" wx:if="{{item.courseName}}">
+          <text class="note-tag">{{item.courseName}}</text>
         </view>
       </view>
       
       <view class="empty-state" wx:if="{{noteList.length === 0}}">
         <text class="empty-icon">📝</text>
-        <text class="empty-text">还没有笔记，开始录音创建第一条笔记吧</text>
+        <text class="empty-text">还没有笔记</text>
+        <text class="empty-hint">点击上方"新建"或"录音"创建第一条笔记</text>
       </view>
     </view>
   </view>

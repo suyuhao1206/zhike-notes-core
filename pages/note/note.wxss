@@ -84,6 +84,10 @@
   padding: 20rpx;
   background: #fff;
   border-radius: 12rpx;
+  margin-bottom: 10rpx;
+}
+
+.action-bar.second-bar {
   margin-bottom: 20rpx;
 }
 
@@ -263,4 +267,222 @@
 .more-text {
   font-size: 26rpx;
   color: #333;
+}
+
+/* 新版思维导图样式 */
+.mindmap-container {
+  margin-top: 20rpx;
+}
+
+.mindmap-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #1890FF;
+  text-align: center;
+  padding: 20rpx;
+  background: linear-gradient(135deg, #E6F7FF 0%, #BAE7FF 100%);
+  border-radius: 12rpx;
+  margin-bottom: 20rpx;
+}
+
+.mindmap-graph {
+  margin: 20rpx 0 24rpx;
+  padding: 20rpx;
+  background: #f7fbff;
+  border-radius: 12rpx;
+}
+
+.graph-root {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 16rpx 24rpx;
+  border-radius: 8rpx;
+  background: #1890ff;
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 600;
+  text-align: center;
+}
+
+.graph-branches {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 18rpx;
+  margin-top: 20rpx;
+}
+
+.graph-branch {
+  width: 180rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.graph-line {
+  width: 2rpx;
+  height: 24rpx;
+  background: #91caff;
+}
+
+.graph-node {
+  width: 100%;
+  min-height: 64rpx;
+  padding: 12rpx;
+  box-sizing: border-box;
+  border-radius: 8rpx;
+  background: #ffffff;
+  border: 1rpx solid #bae0ff;
+  color: #0958d9;
+  font-size: 24rpx;
+  line-height: 1.4;
+  text-align: center;
+  word-break: break-all;
+}
+
+.mindmap-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.mindmap-section {
+  background: #FAFAFA;
+  border-radius: 10rpx;
+  padding: 16rpx;
+  border-left: 4rpx solid #1890FF;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-bottom: 12rpx;
+}
+
+.section-icon {
+  font-size: 28rpx;
+}
+
+.section-name {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #262626;
+}
+
+.section-items {
+  padding-left: 20rpx;
+}
+
+.item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+  margin-bottom: 10rpx;
+}
+
+.item-bullet {
+  color: #1890FF;
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+
+.item-content {
+  flex: 1;
+}
+
+.item-text {
+  font-size: 24rpx;
+  color: #595959;
+  line-height: 36rpx;
+}
+
+.sub-items {
+  margin-top: 8rpx;
+  padding-left: 20rpx;
+}
+
+.sub-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6rpx;
+  margin-bottom: 6rpx;
+}
+
+.sub-bullet {
+  color: #52C41A;
+  font-size: 22rpx;
+  line-height: 32rpx;
+}
+
+.sub-text {
+  font-size: 22rpx;
+  color: #8C8C8C;
+  line-height: 32rpx;
+}
+
+.mindmap-full {
+  max-height: none;
+}
+
+.sections-more {
+  text-align: center;
+  padding: 16rpx;
+  color: #999;
+  font-size: 24rpx;
+}
+
+.item-more {
+  padding: 8rpx 0;
+  color: #999;
+  font-size: 22rpx;
+}
+
+/* 无思维导图提示 */
+.mindmap-empty {
+  text-align: center;
+}
+
+.empty-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  margin-bottom: 20rpx;
+}
+
+.empty-icon {
+  font-size: 40rpx;
+}
+
+.empty-title {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.empty-hint {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.generate-btn {
+  background: linear-gradient(135deg, #1890FF 0%, #096DD9 100%);
+  color: white;
+  border: none;
+  padding: 16rpx 40rpx;
+  border-radius: 8rpx;
+  font-size: 26rpx;
+}
+
+.generate-btn[loading] {
+  opacity: 0.6;
 }

@@ -39,15 +39,40 @@
     </picker>
   </view>
 
+  <view class="course-select card" wx:if="{{!isRecording && !pageError && courseList.length > 0}}">
+    <view class="section-title">保存到笔记</view>
+    <view class="picker" bindtap="showNoteSelector">
+      <text>{{selectedNoteTitle}}</text>
+      <text class="picker-arrow">›</text>
+    </view>
+    <button wx:if="{{selectedNote}}" bindtap="clearSelectedNote">改为创建新笔记</button>
+  </view>
+
+  <view class="modal" wx:if="{{showNoteSelector}}">
+    <view class="modal-mask" bindtap="hideNoteSelector"></view>
+    <view class="modal-content">
+      <view class="section-title">选择要追加的笔记</view>
+      <view class="record-list">
+        <view class="record-item card" wx:for="{{noteList}}" wx:key="id" bindtap="selectNote" data-id="{{item._id || item.id}}">
+          <text class="record-course">{{item.title}}</text>
+        </view>
+      </view>
+      <button bindtap="clearSelectedNote">创建新笔记</button>
+    </view>
+  </view>
+
   <!-- 录音记录列表 -->
   <view class="section" wx:if="{{!pageError}}">
     <view class="section-title">录音记录</view>
     
     <view class="record-list">
-      <view class="record-item card" wx:for="{{recordList}}" wx:key="id" bindtap="viewRecord" data-id="{{item.id}}">
+      <view class="record-item card" wx:for="{{recordList}}" wx:key="id" bindtap="viewRecord" data-id="{{item._id || item.id}}">
         <view class="record-item-header">
           <text class="record-course">{{item.courseName}}</text>
-          <text class="record-item-time">{{item.createTime}}</text>
+          <view class="record-item-actions">
+            <text class="record-item-time">{{item.createTime}}</text>
+            <text class="record-delete" catchtap="deleteRecord" data-id="{{item.id}}">删除</text>
+          </view>
         </view>
         <view class="record-item-info">
           <text class="record-duration">⏱️ {{item.durationText}}</text>

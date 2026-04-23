@@ -1,0 +1,137 @@
+<view class="container">
+  <view class="status-card">
+    <view class="status-header">
+      <view class="status-icon {{cloudEnabled && isOnline ? 'online' : 'offline'}}">
+        <text class="icon">{{cloudEnabled && isOnline ? '☁️' : '📱'}}</text>
+      </view>
+      <view class="status-info">
+        <text class="status-title">{{cloudEnabled ? '云存储已启用' : '本地存储模式'}}</text>
+        <text class="status-desc">
+          {{isOnline ? '网络正常' : '离线模式'}}
+          {{pendingSync > 0 ? ' · ' + pendingSync + '条待同步' : ''}}
+        </text>
+      </view>
+    </view>
+    
+    <view class="status-badge {{cloudEnabled && isOnline ? 'online' : 'offline'}}">
+      {{cloudEnabled && isOnline ? '已连接' : '未连接'}}
+    </view>
+  </view>
+
+  <view class="stats-card">
+    <view class="stats-title">存储统计</view>
+    
+    <view class="stats-grid">
+      <view class="stat-item">
+        <text class="stat-label">云端课程</text>
+        <text class="stat-value">{{stats.cloud.courses}}</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-label">云端笔记</text>
+        <text class="stat-value">{{stats.cloud.notes}}</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-label">本地课程</text>
+        <text class="stat-value">{{stats.local.courses}}</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-label">本地笔记</text>
+        <text class="stat-value">{{stats.local.notes}}</text>
+      </view>
+    </view>
+
+    <view class="storage-bar">
+      <view class="bar-label">
+        <text>本地存储空间</text>
+        <text>{{storagePercent}}%</text>
+      </view>
+      <progress 
+        percent="{{storagePercent}}" 
+        stroke-width="8" 
+        activeColor="#1890FF"
+        backgroundColor="#E8E8E8"
+      />
+      <text class="bar-hint">{{localSize}} KB / {{limitSize}} MB</text>
+    </view>
+  </view>
+
+  <view class="sync-section">
+    <view class="section-title">数据同步</view>
+    
+    <view class="sync-card" bindtap="syncAll" wx:if="{{isOnline && cloudEnabled}}">
+      <text class="sync-icon">🔄</text>
+      <view class="sync-info">
+        <text class="sync-title">上传所有数据</text>
+        <text class="sync-desc">将本地数据同步到云端</text>
+      </view>
+      <text class="sync-arrow">></text>
+    </view>
+
+    <view class="sync-card" bindtap="syncPending" wx:if="{{pendingSync > 0}}">
+      <text class="sync-icon">📤</text>
+      <view class="sync-info">
+        <text class="sync-title">同步待上传数据</text>
+        <text class="sync-desc">{{pendingSync}}条数据等待上传</text>
+      </view>
+      <text class="sync-arrow">></text>
+    </view>
+
+    <view class="sync-card" bindtap="downloadFromCloud" wx:if="{{isOnline && cloudEnabled}}">
+      <text class="sync-icon">📥</text>
+      <view class="sync-info">
+        <text class="sync-title">从云端恢复</text>
+        <text class="sync-desc">下载云端数据到本地</text>
+      </view>
+      <text class="sync-arrow">></text>
+    </view>
+  </view>
+
+  <view class="manage-section">
+    <view class="section-title">数据管理</view>
+    
+    <view class="manage-item" bindtap="exportData">
+      <text class="manage-icon">📦</text>
+      <text class="manage-text">导出数据</text>
+      <text class="manage-arrow">></text>
+    </view>
+    
+    <view class="manage-item" bindtap="importData">
+      <text class="manage-icon">📂</text>
+      <text class="manage-text">导入数据</text>
+      <text class="manage-arrow">></text>
+    </view>
+    
+    <view class="manage-item" bindtap="clearLocalData">
+      <text class="manage-icon">🗑️</text>
+      <text class="manage-text">清除本地数据</text>
+      <text class="manage-arrow">></text>
+    </view>
+    
+    <view class="manage-item" bindtap="clearCloudData" wx:if="{{cloudEnabled}}">
+      <text class="manage-icon">⚠️</text>
+      <text class="manage-text">清除云端数据</text>
+      <text class="manage-arrow">></text>
+    </view>
+  </view>
+
+  <view class="history-section" wx:if="{{syncHistory.length > 0}}">
+    <view class="section-title">同步历史</view>
+    
+    <view class="history-list">
+      <view class="history-item" wx:for="{{syncHistory}}" wx:key="timestamp">
+        <view class="history-icon">
+          <text>{{item.type === 'upload' ? '📤' : '📥'}}</text>
+        </view>
+        <view class="history-info">
+          <text class="history-title">
+            {{item.type === 'upload' ? '上传' : '下载'}} {{item.count}} 条数据
+          </text>
+          <text class="history-time">{{item.time}}</text>
+        </view>
+        <text class="history-status {{item.success ? 'success' : 'failed'}}">
+          {{item.success ? '成功' : '失败'}}
+        </text>
+      </view>
+    </view>
+  </view>
+</view>

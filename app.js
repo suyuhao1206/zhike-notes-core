@@ -1,30 +1,34 @@
 const internalAIConfig = require('./config/ai.config.js');
 const DB = require('./utils/db.js');
+const { getOrchestrator } = require('./core/orchestrator')
+const { getAIService } = require('./services/aiService')
 
 App({
   onLaunch() {
-    // 小程序启动时执行
-    console.log('智课笔记小程序启动');
-
-    // 初始化云开发环境
+    console.log('🚀 智课笔记启动中...')
+    
     if (wx.cloud) {
       wx.cloud.init({
-        env: '你的云开发环境ID', // 替换为你的云开发环境ID
+        env: 'REDACTED_CLOUD_ENV',
         traceUser: true
       });
-      console.log('云开发环境初始化成功');
+      console.log('✅ 云开发环境初始化成功');
       
-      // 初始化数据库模块
       DB.init();
     } else {
       console.warn('请使用 2.2.3 或以上的基础库以使用云能力');
     }
 
-    // 检查登录状态
     this.checkLoginStatus();
 
-    // 初始化 AI 配置（默认 Coze，可扩展到 OpenAI 兼容接口）
     this.initAIConfig();
+    
+    // 延迟初始化新架构，避免阻塞启动
+    setTimeout(() => {
+      this.initNewArchitecture().catch(err => {
+        console.error('新架构初始化失败:', err);
+      });
+    }, 100);
   },
 
   globalData: {
@@ -42,8 +46,16 @@ App({
             noteSummary: '',
             qaAssistant: '',
             examGenerator: '',
-            flashcardGen: ''
+            flashcardGen: '',
+            ocrVision: '',
+            audioTranscribe: ''
           }
+        },
+        xfyun: {
+          appId: '',
+          apiKey: '',
+          apiSecret: '',
+          baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
         },
         openai: {
           baseUrl: 'https://api.openai.com/v1',
@@ -64,8 +76,16 @@ App({
         noteSummary: '',  // 笔记总结 Bot ID
         qaAssistant: '',  // 答疑助手 Bot ID
         examGenerator: '', // 试卷生成 Bot ID
-        flashcardGen: ''   // 卡片生成 Bot ID
+        flashcardGen: '',  // 卡片生成 Bot ID
+        ocrVision: '',     // 图片识别 Bot ID
+        audioTranscribe: '' // 录音转写 Bot ID
       }
+    },
+    xfyunConfig: {
+      appId: '',
+      apiKey: '',
+      apiSecret: '',
+      baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
     }
   },
 
@@ -90,6 +110,7 @@ App({
 
     const cozeToken = wx.getStorageSync('cozeToken');
     const cozeBots = wx.getStorageSync('cozeBots');
+    const xfyunConfig = wx.getStorageSync('xfyunConfig');
     const aiConfig = wx.getStorageSync('aiConfig');
 
     if (canUseRuntimeOverride && aiConfig && aiConfig.providers) {
@@ -101,12 +122,33 @@ App({
       this.globalData.aiConfig.providers.coze.apiKey = cozeToken;
     }
     if (cozeBots) {
-      this.globalData.cozeConfig.bots = cozeBots;
-      this.globalData.aiConfig.providers.coze.bots = cozeBots;
+      const savedBots = Object.keys(cozeBots).reduce((result, key) => {
+        if (cozeBots[key]) result[key] = cozeBots[key];
+        return result;
+      }, {});
+      const mergedBots = {
+        ...(this.globalData.aiConfig.providers.coze.bots || {}),
+        ...savedBots
+      };
+      this.globalData.cozeConfig.bots = mergedBots;
+      this.globalData.aiConfig.providers.coze.bots = mergedBots;
+    }
+
+    if (xfyunConfig && (xfyunConfig.appId || xfyunConfig.apiKey || xfyunConfig.apiSecret)) {
+      const normalizedXfyunConfig = this.normalizeXfyunConfig(xfyunConfig);
+      const mergedXfyunConfig = {
+        ...(this.globalData.aiConfig.providers.xfyun || {}),
+        ...normalizedXfyunConfig
+      };
+      this.globalData.xfyunConfig = mergedXfyunConfig;
+      this.globalData.aiConfig.providers.xfyun = mergedXfyunConfig;
+      wx.setStorageSync('xfyunConfig', mergedXfyunConfig);
+      wx.setStorageSync('aiConfig', this.globalData.aiConfig);
     }
 
     // 同步 cozeConfig 与 aiConfig.coze，避免旧代码失效
     this.syncCozeConfigFromAI();
+    this.syncXfyunConfigFromAI();
   },
 
   mergeAIConfig(baseConfig, runtimeConfig) {
@@ -121,6 +163,17 @@ App({
     return merged;
   },
 
+  normalizeXfyunConfig(config = {}) {
+    return { ...config };
+  },
+
+  maskSecret(value = '', left = 4, right = 4) {
+    const text = String(value || '');
+    if (!text) return '(empty)';
+    if (text.length <= left + right) return `${text.slice(0, 1)}***${text.slice(-1)}`;
+    return `${text.slice(0, left)}***${text.slice(-right)}`;
+  },
+
   syncCozeConfigFromAI() {
     const cozeProvider = this.globalData.aiConfig.providers.coze || {};
     this.globalData.cozeConfig.baseUrl = cozeProvider.baseUrl || 'https://api.coze.cn/v1';
@@ -128,10 +181,56 @@ App({
     this.globalData.cozeConfig.bots = cozeProvider.bots || {};
   },
 
+  syncXfyunConfigFromAI() {
+    const xfyunProvider = this.globalData.aiConfig.providers.xfyun || {};
+    this.globalData.xfyunConfig = {
+      appId: xfyunProvider.appId || '',
+      apiKey: xfyunProvider.apiKey || '',
+      apiSecret: xfyunProvider.apiSecret || '',
+      baseUrl: xfyunProvider.baseUrl || 'https://office-api-ist-dx.iflyaisol.com'
+    };
+
+    console.log('🔐 当前讯飞配置摘要:', {
+      appId: this.maskSecret(this.globalData.xfyunConfig.appId, 3, 2),
+      apiKey: this.maskSecret(this.globalData.xfyunConfig.apiKey, 6, 4),
+      apiSecret: this.maskSecret(this.globalData.xfyunConfig.apiSecret, 6, 4),
+      baseUrl: this.globalData.xfyunConfig.baseUrl
+    });
+  },
+
+  async initNewArchitecture() {
+    try {
+      console.log('📦 初始化新架构...')
+      
+      const aiService = getAIService()
+      aiService.init(this.globalData.aiConfig)
+      console.log('✅ AI服务初始化完成')
+
+      const orchestrator = getOrchestrator()
+      await orchestrator.init()
+      console.log('✅ 编排器初始化完成')
+      
+      const capabilities = orchestrator.getAvailableCapabilities()
+      console.log('📋 可用能力:', capabilities)
+      
+      const tools = orchestrator.getAvailableTools()
+      console.log('🔧 可用工具:', tools)
+      
+      // 保存到全局，方便页面访问
+      this.orchestrator = orchestrator
+      
+      console.log('✅ 新架构初始化完成')
+    } catch (error) {
+      console.error('❌ 新架构初始化失败:', error)
+      console.log('💡 提示: 新架构初始化失败不影响基础功能使用')
+    }
+  },
+
   setAIConfig(config) {
     this.globalData.aiConfig = config;
     wx.setStorageSync('aiConfig', config);
     this.syncCozeConfigFromAI();
+    this.syncXfyunConfigFromAI();
   },
 
   // 设置 Coze Token
@@ -148,6 +247,24 @@ App({
     this.globalData.aiConfig.providers.coze.bots = bots;
     wx.setStorageSync('aiConfig', this.globalData.aiConfig);
     wx.setStorageSync('cozeBots', bots);
+  },
+
+  setXfyunConfig(config = {}) {
+    const hasCustomValue = !!(config.appId || config.apiKey || config.apiSecret);
+    const normalizedConfig = this.normalizeXfyunConfig(config);
+    const nextConfig = {
+      ...(this.globalData.aiConfig.providers.xfyun || {}),
+      ...(hasCustomValue ? normalizedConfig : {}),
+      baseUrl: normalizedConfig.baseUrl || (this.globalData.aiConfig.providers.xfyun || {}).baseUrl || 'https://office-api-ist-dx.iflyaisol.com'
+    };
+    this.globalData.xfyunConfig = nextConfig;
+    this.globalData.aiConfig.providers.xfyun = nextConfig;
+    wx.setStorageSync('aiConfig', this.globalData.aiConfig);
+    if (hasCustomValue) {
+      wx.setStorageSync('xfyunConfig', nextConfig);
+    } else {
+      wx.removeStorageSync('xfyunConfig');
+    }
   },
 
   // 检查登录状态

@@ -4,6 +4,7 @@
     "pages/course/course",
     "pages/notes/notes",
     "pages/note/note",
+    "pages/note-edit/note-edit",
     "pages/record/record",
     "pages/qa/qa",
     "pages/review/review",
@@ -15,7 +16,8 @@
     "pages/help/help",
     "pages/mistakes/mistakes",
     "pages/ocr/ocr",
-    "pages/flashcard/flashcard"
+    "pages/flashcard/flashcard",
+    "pages/cloud-storage/cloud-storage"
   ],
   "window": {
     "backgroundTextStyle": "light",
@@ -56,11 +58,10 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
-  "permission": {
-    "scope.record": {
-      "desc": "用于课堂录音并生成学习笔记"
-    }
-  },
+  "requiredPrivateInfos": [
+    "chooseAddress",
+    "chooseLocation"
+  ],
   "requiredBackgroundModes": ["audio"],
   "lazyCodeLoading": "requiredComponents"
 }

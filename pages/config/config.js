@@ -4,32 +4,30 @@ const api = require('../../api/api.js');
 Page({
   data: {
     cozeToken: '',
+    xfyun: {
+      appId: '',
+      apiKey: '',
+      apiSecret: ''
+    },
     bots: {
       noteSummary: '',
       qaAssistant: '',
       examGenerator: '',
-      flashcardGen: ''
+      flashcardGen: '',
+      ocrVision: '',
+      audioTranscribe: ''
     },
     botLabels: {
       noteSummary: '笔记总结 Bot',
       qaAssistant: '答疑助手 Bot',
       examGenerator: '试卷生成 Bot',
-      flashcardGen: '卡片生成 Bot'
+      flashcardGen: '卡片生成 Bot',
+      ocrVision: 'OCR/视觉 Bot',
+      audioTranscribe: '录音转写 Bot'
     }
   },
 
   onLoad() {
-    const app = getApp();
-    if (!app.isTestOrDevelopEnv || !app.isTestOrDevelopEnv()) {
-      wx.showToast({
-        title: '该页面仅开发环境可用',
-        icon: 'none'
-      });
-      setTimeout(() => {
-        wx.navigateBack({ delta: 1 });
-      }, 800);
-      return;
-    }
     this.loadConfig();
   },
 
@@ -37,10 +35,16 @@ Page({
   loadConfig() {
     const app = getApp();
     const config = app.globalData.cozeConfig;
+    const xfyunConfig = app.globalData.xfyunConfig || {};
 
     this.setData({
       cozeToken: config.token,
-      bots: { ...config.bots }
+      bots: { ...config.bots },
+      xfyun: {
+        appId: xfyunConfig.appId || '',
+        apiKey: xfyunConfig.apiKey || '',
+        apiSecret: xfyunConfig.apiSecret || ''
+      }
     });
   },
 
@@ -57,6 +61,13 @@ Page({
     });
   },
 
+  onXfyunInput(e) {
+    const field = e.currentTarget.dataset.field;
+    this.setData({
+      [`xfyun.${field}`]: e.detail.value
+    });
+  },
+
   // 保存配置
   saveConfig() {
     const app = getApp();
@@ -64,6 +75,7 @@ Page({
     // 保存到全局
     app.setCozeToken(this.data.cozeToken);
     app.setCozeBots(this.data.bots);
+    app.setXfyunConfig(this.data.xfyun);
 
     wx.showToast({
       title: '保存成功',
@@ -125,12 +137,18 @@ Page({
    - 进入"个人设置" -> "开发者令牌"
    - 创建并复制 Token
 
-2. 获取 Bot ID：
+2. 获取 Coze Bot ID：
    - 在 Coze 平台创建 Bot
    - 进入 Bot 详情页
    - 复制 Bot ID
 
-3. 将以上信息填入对应位置即可`,
+3. 获取讯飞密钥：
+   - 登录讯飞开放平台
+   - 开通录音文件转写服务
+   - 复制 APPID、APIKey、APISecret
+
+4. 将以上信息填入对应位置即可。
+   讯飞录音转写现在直接走前端配置，不再依赖云函数环境变量`,
       showCancel: false
     });
   }

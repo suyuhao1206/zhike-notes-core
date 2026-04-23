@@ -1,0 +1,56 @@
+<view class="container">
+  <!-- 课程信息 -->
+  <view class="course-header card">
+    <view class="course-title">{{courseInfo.name}}</view>
+    <view class="course-info">
+      <text class="info-item">📚 {{courseInfo.noteCount}}条笔记</text>
+      <text class="info-item">📅 创建于{{courseInfo.createTime}}</text>
+    </view>
+  </view>
+
+  <!-- 快捷操作 -->
+  <view class="quick-actions card">
+    <view class="action-item" bindtap="startRecord">
+      <text class="action-icon">🎤</text>
+      <text class="action-text">录音</text>
+    </view>
+    <view class="action-item" bindtap="askQuestion">
+      <text class="action-icon">💬</text>
+      <text class="action-text">答疑</text>
+    </view>
+    <view class="action-item" bindtap="generateExam">
+      <text class="action-icon">📝</text>
+      <text class="action-text">组卷</text>
+    </view>
+    <view class="action-item" bindtap="reviewCards">
+      <text class="action-icon">📖</text>
+      <text class="action-text">卡片</text>
+    </view>
+  </view>
+
+  <!-- 笔记列表 -->
+  <view class="section">
+    <view class="section-header">
+      <text class="section-title">课程笔记</text>
+      <text class="section-count">共{{noteList.length}}条</text>
+    </view>
+    
+    <view class="note-list">
+      <view class="note-item card" wx:for="{{noteList}}" wx:key="id" bindtap="goToNote" data-id="{{item.id}}">
+        <view class="note-header">
+          <text class="note-title">{{item.title}}</text>
+          <text class="note-time">{{item.createTime}}</text>
+        </view>
+        <text class="note-summary">{{item.summary}}</text>
+        <view class="note-footer">
+          <text class="note-tag">{{item.tag}}</text>
+        </view>
+      </view>
+      
+      <view class="empty-state" wx:if="{{noteList.length === 0}}">
+        <text class="empty-icon">📝</text>
+        <text class="empty-text">还没有笔记，开始录音创建第一条笔记吧</text>
+      </view>
+    </view>
+  </view>
+</view>

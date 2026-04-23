@@ -37,7 +37,7 @@
     </view>
     
     <view class="course-list">
-      <view class="course-item card" wx:for="{{courseList}}" wx:key="id" bindtap="goToCourse" data-id="{{item.id}}">
+      <view class="course-item card" wx:for="{{courseList}}" wx:key="id" bindtap="goToCourse" data-id="{{item._id || item.id}}">
         <view class="course-info">
           <text class="course-name">{{item.name}}</text>
           <text class="course-note-count">{{item.noteCount}}条笔记</text>
@@ -47,7 +47,8 @@
       
       <view class="empty-state" wx:if="{{courseList.length === 0}}">
         <text class="empty-icon">📚</text>
-        <text class="empty-text">还没有课程，开始录音创建第一个笔记吧</text>
+        <text class="empty-text">还没有课程</text>
+        <text class="empty-hint">点击右下角"+"创建第一个课程</text>
       </view>
     </view>
   </view>
@@ -60,7 +61,7 @@
     </view>
     
     <view class="note-list">
-      <view class="note-item card" wx:for="{{recentNotes}}" wx:key="id" bindtap="goToNote" data-id="{{item.id}}">
+      <view class="note-item card" wx:for="{{recentNotes}}" wx:key="id" bindtap="goToNote" data-id="{{item._id || item.id}}">
         <view class="note-header">
           <text class="note-course">{{item.courseName}}</text>
           <text class="note-time">{{item.createTime}}</text>
@@ -70,7 +71,37 @@
       </view>
       
       <view class="empty-state" wx:if="{{recentNotes.length === 0}}">
+        <text class="empty-icon">📝</text>
         <text class="empty-text">还没有笔记</text>
+        <text class="empty-hint">点击课程创建笔记，或使用录音/拍图功能</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 快速创建按钮 -->
+  <view class="quick-create-fab" bindtap="showQuickCreate">
+    <text class="fab-icon">+</text>
+  </view>
+
+  <!-- 快速创建菜单 -->
+  <view class="quick-create-menu" wx:if="{{showQuickMenu}}">
+    <view class="menu-mask" bindtap="hideQuickCreate"></view>
+    <view class="menu-content">
+      <view class="menu-item" bindtap="createCourse">
+        <text class="menu-icon">📚</text>
+        <text class="menu-text">创建课程</text>
+      </view>
+      <view class="menu-item" bindtap="createNote">
+        <text class="menu-icon">📝</text>
+        <text class="menu-text">新建笔记</text>
+      </view>
+      <view class="menu-item" bindtap="startRecord">
+        <text class="menu-icon">🎤</text>
+        <text class="menu-text">录音转写</text>
+      </view>
+      <view class="menu-item" bindtap="startOCR">
+        <text class="menu-icon">📷</text>
+        <text class="menu-text">拍图识别</text>
       </view>
     </view>
   </view>

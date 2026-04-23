@@ -9,21 +9,25 @@
     <!-- 头部信息 -->
     <view class="note-header card">
       <view class="header-top">
-        <text class="course-name">{{note.courseName}}</text>
-        <text class="create-time">{{note.createTime}}</text>
+        <text class="course-name">{{note.courseName || '未分类'}}</text>
+        <text class="create-time">{{note.createTimeFormatted || '刚刚'}}</text>
       </view>
-      <text class="note-title">{{note.title}}</text>
-      <view class="note-meta">
-        <text class="meta-item">时长: {{note.duration}}</text>
-        <text class="meta-item">答疑: {{note.qaCount}}次</text>
+      <text class="note-title">{{note.title || '无标题笔记'}}</text>
+      <view class="note-meta" wx:if="{{note.duration || note.qaCount}}">
+        <text class="meta-item" wx:if="{{note.duration}}">时长: {{note.duration}}</text>
+        <text class="meta-item" wx:if="{{note.qaCount}}">答疑: {{note.qaCount}}次</text>
       </view>
-      <view class="tag-list">
+      <view class="tag-list" wx:if="{{note.tags && note.tags.length > 0}}">
         <text class="tag" wx:for="{{note.tags}}" wx:key="*this">{{item}}</text>
       </view>
     </view>
 
     <!-- 操作按钮 -->
     <view class="action-bar">
+      <view class="action-item" bindtap="goToEdit">
+        <text class="action-icon">✏️</text>
+        <text class="action-text">编辑</text>
+      </view>
       <view class="action-item" bindtap="viewMindMap">
         <text class="action-icon">🧠</text>
         <text class="action-text">思维导图</text>
@@ -36,9 +40,20 @@
         <text class="action-icon">📝</text>
         <text class="action-text">生成试卷</text>
       </view>
+    </view>
+
+    <view class="action-bar second-bar">
+      <view class="action-item" bindtap="generateFlashcard">
+        <text class="action-icon">📚</text>
+        <text class="action-text">背诵卡片</text>
+      </view>
       <view class="action-item" bindtap="shareNote">
         <text class="action-icon">📤</text>
         <text class="action-text">分享</text>
+      </view>
+      <view class="action-item" bindtap="deleteNote">
+        <text class="action-icon">🗑️</text>
+        <text class="action-text">删除</text>
       </view>
     </view>
 
@@ -73,32 +88,83 @@
     <!-- 思维导图预览 -->
     <view class="mindmap-preview card" wx:if="{{mindMap}}">
       <view class="preview-header">
-        <text class="preview-title">知识点结构</text>
-        <text class="preview-more" bindtap="viewMindMap">查看详情 ></text>
+        <text class="preview-title">📚 知识点结构</text>
+        <text class="preview-more" bindtap="viewMindMap">{{showFullMindMap ? '收起' : '展开查看'}}</text>
       </view>
-      <view class="mindmap-tree">
-        <view class="tree-node root">
-          <text class="node-title">{{mindMap.title}}</text>
-          <view class="node-children">
-            <view class="tree-node child" wx:for="{{mindMap.children}}" wx:key="title">
-              <text class="node-title">{{item.title}}</text>
-              <view class="node-leafs">
-                <text class="leaf" wx:for="{{item.children}}" wx:key="*this">{{item}}</text>
+      
+      <!-- 折叠状态：只显示前3个 -->
+      <view class="mindmap-container" wx:if="{{!showFullMindMap && mindMap.children}}">
+        <view class="mindmap-title">{{mindMap.title}}</view>
+        <view class="mindmap-sections">
+          <view class="mindmap-section" wx:for="{{mindMapPreviewSections}}" wx:key="name" wx:for-item="section">
+            <view class="section-header">
+              <text class="section-icon">📌</text>
+              <text class="section-name">{{section.name}}</text>
+            </view>
+            <view class="section-items" wx:if="{{section.children && section.children.length > 0}}">
+              <view class="item-row" wx:for="{{section.children}}" wx:key="name" wx:for-item="item">
+                <text class="item-bullet">•</text>
+                <text class="item-text">{{item.name}}</text>
+              </view>
+              <view class="item-more" wx:if="{{section.moreCount > 0}}">
+                <text class="more-text">还有 {{section.moreCount}} 项...</text>
+              </view>
+            </view>
+          </view>
+          <view class="sections-more" wx:if="{{mindMap.children.length > 3}}">
+            <text class="more-text">还有 {{mindMap.children.length - 3}} 个知识点...</text>
+          </view>
+        </view>
+      </view>
+      
+      <!-- 展开状态：显示全部 -->
+      <view class="mindmap-container mindmap-full" wx:if="{{showFullMindMap && mindMap.children}}">
+        <view class="mindmap-title">{{mindMap.title}}</view>
+        <view class="mindmap-graph">
+          <view class="graph-root">{{mindMap.title}}</view>
+          <view class="graph-branches">
+            <view class="graph-branch" wx:for="{{mindMapSections}}" wx:key="name" wx:for-item="section">
+              <view class="graph-line"></view>
+              <view class="graph-node">{{section.name}}</view>
+            </view>
+          </view>
+        </view>
+        <view class="mindmap-sections">
+          <view class="mindmap-section" wx:for="{{mindMapSections}}" wx:key="name" wx:for-item="section">
+            <view class="section-header">
+              <text class="section-icon">📌</text>
+              <text class="section-name">{{section.name}}</text>
+            </view>
+            <view class="section-items" wx:if="{{section.children && section.children.length > 0}}">
+              <view class="item-row" wx:for="{{section.children}}" wx:key="name" wx:for-item="item">
+                <text class="item-bullet">•</text>
+                <view class="item-content">
+                  <text class="item-text">{{item.name}}</text>
+                  <view class="sub-items" wx:if="{{item.children && item.children.length > 0}}">
+                    <view class="sub-item" wx:for="{{item.children}}" wx:key="name" wx:for-item="subItem">
+                      <text class="sub-bullet">◦</text>
+                      <text class="sub-text">{{subItem.name}}</text>
+                    </view>
+                  </view>
+                </view>
               </view>
             </view>
           </view>
         </view>
       </view>
     </view>
-
-    <!-- 更多操作 -->
-    <view class="more-actions card">
-      <text class="more-title">更多功能</text>
-      <view class="more-list">
-        <view class="more-item" bindtap="generateFlashcard">
-          <text class="more-icon">📚</text>
-          <text class="more-text">生成背诵卡片</text>
-        </view>
+    
+    <!-- 无思维导图提示 -->
+    <view class="mindmap-empty card" wx:if="{{!mindMap || !mindMap.children || mindMap.children.length === 0}}">
+      <view class="empty-header">
+        <text class="empty-icon">🧠</text>
+        <text class="empty-title">知识点结构</text>
+      </view>
+      <view class="empty-content">
+        <text class="empty-hint">点击下方"思维导图"按钮生成</text>
+        <button class="generate-btn" bindtap="viewMindMap" loading="{{isGeneratingMindMap}}">
+          {{isGeneratingMindMap ? '生成中...' : '生成思维导图'}}
+        </button>
       </view>
     </view>
   </view>

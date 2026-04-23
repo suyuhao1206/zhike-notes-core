@@ -108,6 +108,16 @@
   word-break: break-all;
 }
 
+.ocr-notice {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  border-radius: 8rpx;
+  background: #fffbe6;
+  color: #8a5a00;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
 /* 保存区域 */
 .save-section {
   background: #fff;

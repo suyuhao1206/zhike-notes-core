@@ -80,6 +80,18 @@
 
     <!-- 其他操作 -->
     <view class="actions-card">
+      <view class="action-item" bindtap="goToCloudStorage">
+        <text class="action-icon">☁️</text>
+        <text class="action-name">云存储管理</text>
+      </view>
+      <view class="action-item" bindtap="goToConfig">
+        <text class="action-icon">⚙️</text>
+        <text class="action-name">API配置</text>
+      </view>
+      <view class="action-item" bindtap="cleanupDuplicates">
+        <text class="action-icon">🧹</text>
+        <text class="action-name">清理重复数据</text>
+      </view>
       <view class="action-item" bindtap="goToHelp">
         <text class="action-icon">❓</text>
         <text class="action-name">帮助中心</text>

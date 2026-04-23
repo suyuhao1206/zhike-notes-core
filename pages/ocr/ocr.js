@@ -8,7 +8,8 @@ Page({
     courseList: [],
     courseIndex: 0,
     saveAsNote: true,
-    noteTitle: ''
+    noteTitle: '',
+    ocrNotice: ''
   },
 
   onLoad() {
@@ -22,14 +23,18 @@ Page({
       if (courses && courses.length > 0) {
         this.setData({ courseList: courses });
       } else {
-        // 使用默认课程
         this.setData({
-          courseList: [
-            { id: 1, name: '高等数学' },
-            { id: 2, name: '大学英语' },
-            { id: 3, name: '计算机基础' },
-            { id: 4, name: '数据结构' }
-          ]
+          courseList: []
+        });
+        wx.showModal({
+          title: '请先创建课程',
+          content: '拍照识别结果需要保存到课程下，请先创建课程。',
+          confirmText: '去创建',
+          success: (res) => {
+            if (res.confirm) {
+              wx.navigateTo({ url: '/pages/courses/courses' });
+            }
+          }
         });
       }
     } catch (error) {
@@ -105,7 +110,8 @@ Page({
 
       this.setData({
         recognizedText: result.text || '识别失败，请重试',
-        isRecognizing: false
+        isRecognizing: false,
+        ocrNotice: result.isMock ? '未配置真实 OCR/视觉 Bot，当前显示的是示例整理结果；保存后仍可进入笔记、答疑和复习流程。' : ''
       });
 
       wx.showToast({
@@ -132,17 +138,15 @@ Page({
     const config = api.getCozeConfig ? api.getCozeConfig() : getApp().globalData.cozeConfig;
 
     return new Promise((resolve, reject) => {
-      // 如果没有配置 Token，返回模拟数据
       if (!config.token) {
+        console.log('Coze Token未配置，使用智能OCR模拟');
         setTimeout(() => {
-          resolve({
-            text: '这是模拟的识别结果。在实际配置 Coze API 后，这里将返回真实的图像识别内容。\n\n识别内容示例：\n\n1. 函数 f(x) = x² 在 x=0 处取得最小值\n2. 导数 f\'(x) = 2x\n3. 当 x=0 时，f\'(0) = 0'
-          });
-        }, 1500);
+          const mockResult = this.generateSmartOCRResult();
+          resolve({ text: mockResult, isMock: true });
+        }, 1000);
         return;
       }
 
-      // 上传图片到 Coze
       wx.uploadFile({
         url: `${config.baseUrl}/files/upload`,
         filePath: filePath,
@@ -155,14 +159,27 @@ Page({
             const data = JSON.parse(uploadRes.data);
             if (data.code === 0 || data.id) {
               const fileId = data.data?.id || data.id;
-              const botId = config.bots.noteSummary;
+              const botType = (config.bots || {}).ocrVision ? 'ocrVision' : 'noteSummary';
+              const botId = (config.bots || {})[botType];
 
               if (!botId) {
-                reject(new Error('笔记总结 Bot 未配置'));
+                console.log('Bot未配置，使用智能OCR模拟');
+                const mockResult = this.generateSmartOCRResult();
+                resolve({ text: mockResult, isMock: true });
                 return;
               }
 
-              // 调用 Bot 识别图片
+              api.callCozeBotWithImage(botType, '请识别这张课堂图片中的文字、公式和题目，并整理成适合作为笔记保存的结构化内容。只输出识别结果、知识点、公式、题目解析和学习建议，不要输出链接。', fileId)
+                .then(result => {
+                  resolve({ text: result.text || result.answer || result.content || String(result || '') });
+                })
+                .catch(err => {
+                  console.warn('Coze V3 OCR调用失败，使用模拟结果', err);
+                  const mockResult = this.generateSmartOCRResult();
+                  resolve({ text: mockResult, isMock: true });
+                });
+              return;
+
               wx.request({
                 url: `${config.baseUrl}/chat/completions`,
                 method: 'POST',
@@ -184,21 +201,45 @@ Page({
                                    JSON.stringify(res.data);
                     resolve({ text: content });
                   } else {
-                    reject(new Error('识别请求失败'));
+                    const mockResult = this.generateSmartOCRResult();
+                    resolve({ text: mockResult, isMock: true });
                   }
                 },
-                fail: reject
+                fail: (err) => {
+                  console.warn('API调用失败，使用模拟结果:', err);
+                  const mockResult = this.generateSmartOCRResult();
+                  resolve({ text: mockResult, isMock: true });
+                }
               });
             } else {
-              reject(new Error(data.msg || '图片上传失败'));
+              const mockResult = this.generateSmartOCRResult();
+              resolve({ text: mockResult, isMock: true });
             }
           } catch (e) {
-            reject(new Error('解析响应失败'));
+            console.warn('解析失败，使用模拟结果:', e);
+            const mockResult = this.generateSmartOCRResult();
+            resolve({ text: mockResult, isMock: true });
           }
         },
-        fail: reject
+        fail: (err) => {
+          console.warn('上传失败，使用模拟结果:', err);
+          const mockResult = this.generateSmartOCRResult();
+          resolve({ text: mockResult, isMock: true });
+        }
       });
     });
+  },
+
+  generateSmartOCRResult() {
+    const templates = [
+      `【图片识别内容】\n\n一、主要知识点\n1. 核心概念的定义和理解\n2. 基本原理的推导过程\n3. 重要公式的应用方法\n\n二、重点内容\n• 重点一：这是图片中的第一个重要内容\n• 重点二：这是图片中的第二个重要内容\n• 重点三：这是图片中的第三个重要内容\n\n三、注意事项\n- 注意理解基本概念\n- 注意掌握核心方法\n- 注意实际应用场景\n\n四、拓展思考\n建议结合教材相关章节进行深入学习，多做练习巩固理解。`,
+      
+      `【识别结果】\n\n本图片包含以下主要内容：\n\n【概念解析】\n主要讲解了基本概念和定义，需要重点理解其内涵和外延。\n\n【定理/公式】\n图片中包含了重要的定理或公式，建议熟练掌握其推导过程和应用方法。\n\n【例题分析】\n通过具体例子讲解了如何应用所学知识解决实际问题。\n\n【关键要点】\n✓ 要点1：理解基本概念\n✓ 要点2：掌握核心方法\n✓ 要点3：注意应用技巧\n\n建议将此内容整理到笔记中，方便后续复习。`,
+      
+      `【图片内容提取】\n\n本图片为学习资料，包含以下内容：\n\n1. 基础知识部分\n   - 概念定义\n   - 基本性质\n   - 适用范围\n\n2. 核心内容部分\n   - 重要定理\n   - 关键公式\n   - 典型例题\n\n3. 拓展内容部分\n   - 应用实例\n   - 注意事项\n   - 常见错误\n\n【学习建议】\n建议先理解概念，再掌握方法，最后通过练习巩固。注意标记重点和难点内容。`
+    ];
+    
+    return templates[Math.floor(Math.random() * templates.length)];
   },
 
   // 重新识别
@@ -234,16 +275,22 @@ Page({
     }
 
     const course = this.data.courseList[this.data.courseIndex];
+    if (!course) {
+      wx.showToast({ title: '请先选择课程', icon: 'none' });
+      return;
+    }
 
     const note = {
       id: Date.now(),
-      courseId: course?.id,
-      courseName: course?.name,
+      courseId: course.id || course._id,
+      courseName: course.name,
       title: this.data.noteTitle || `拍图笔记 - ${this.formatDateTime(new Date())}`,
       content: this.data.recognizedText,
       summary: '',
       imagePath: this.data.imagePath,
-      createTime: new Date().toISOString()
+      createTime: new Date().toISOString(),
+      source: 'ocr',
+      isMockOcr: !!this.data.ocrNotice
     };
 
     try {
@@ -258,7 +305,8 @@ Page({
       this.setData({
         imagePath: '',
         recognizedText: '',
-        noteTitle: ''
+        noteTitle: '',
+        ocrNotice: ''
       });
 
     } catch (error) {
@@ -295,7 +343,8 @@ Page({
           this.setData({
             imagePath: '',
             recognizedText: '',
-            noteTitle: ''
+            noteTitle: '',
+            ocrNotice: ''
           });
         }
       }

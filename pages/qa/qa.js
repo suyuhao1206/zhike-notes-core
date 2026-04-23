@@ -1,10 +1,13 @@
 // pages/qa/qa.js
 const api = require('../../api/api.js');
+const officialKB = require('../../knowledge/officialKnowledge.js');
 
 Page({
   data: {
     noteId: null,
+    courseId: null,
     note: null,
+    courseNotes: [],
     messages: [],
     inputValue: '',
     isSending: false,
@@ -19,14 +22,29 @@ Page({
 
   onLoad(options) {
     const noteId = options.noteId;
-    this.setData({ noteId });
+    const courseId = options.courseId;
+    this.setData({ noteId, courseId });
 
     if (noteId) {
       this.loadNote(noteId);
+    } else if (courseId) {
+      this.loadCourseNotes(courseId);
     }
 
     // 加载历史问答记录
     this.loadQAHistory();
+  },
+
+  async loadCourseNotes(courseId) {
+    try {
+      const notes = await api.getNotes(courseId);
+      this.setData({ courseNotes: notes || [] });
+      if (notes && notes.length > 0) {
+        this.generateQuickQuestions(notes.map(n => n.content || '').join('\n'));
+      }
+    } catch (error) {
+      console.error('加载课程笔记失败:', error);
+    }
   },
 
   // 加载笔记
@@ -165,17 +183,41 @@ Page({
     wx.setStorageSync(storageKey, messagesToSave);
   },
 
-  // 调用 AI 答疑 API
   async callAIQA(question) {
-    const noteContext = this.data.note ? this.data.note.content : '';
+    const userContext = this.data.note
+      ? this.data.note.content
+      : (this.data.courseNotes || []).map(n => `【${n.title || '笔记'}】\n${n.content || ''}`).join('\n\n');
+    const courseName = this.data.note
+      ? this.data.note.courseName
+      : ((this.data.courseNotes && this.data.courseNotes[0] && this.data.courseNotes[0].courseName) || '');
+    const officialContext = courseName && officialKB && officialKB.getByCourse
+      ? officialKB.getByCourse(courseName).map(k => `【${k.title}】\n${k.content}`).join('\n\n')
+      : '';
+    const noteContext = `【官方知识库】\n${officialContext}\n\n【用户笔记】\n${userContext}`;
 
     try {
+      wx.showLoading({ title: 'AI思考中...', mask: true });
+      
       const result = await api.askQuestion(question, noteContext);
-      return result.answer || result;
+      
+      wx.hideLoading();
+      
+      const answer = result.answer || result.text || '抱歉，我暂时无法回答这个问题。';
+      
+      if (this.data.noteId && result.hasAI) {
+        const noteHelper = require('../../utils/noteHelper.js');
+        await noteHelper.enrichNoteWithAI(this.data.noteId, {
+          question: question,
+          answer: answer
+        }, 'qa');
+      }
+      
+      return answer;
     } catch (error) {
+      wx.hideLoading();
       console.error('AI答疑失败:', error);
-      // 返回友好的错误信息
-      return `抱歉，AI服务暂时不可用。\n\n错误信息：${error.message}\n\n请检查：\n1. 是否已配置Coze API Token\n2. 网络连接是否正常\n\n您也可以尝试简化问题后再次提问。`;
+      
+      return `抱歉，AI服务暂时不可用。\n\n错误信息：${error.message}\n\n建议：\n1. 检查网络连接\n2. 稍后重试\n3. 或尝试简化问题`;
     }
   },
 

@@ -101,6 +101,12 @@
   align-items: center;
 }
 
+.record-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
 .record-course {
   font-size: 30rpx;
   font-weight: 600;
@@ -109,6 +115,11 @@
 .record-item-time {
   font-size: 24rpx;
   color: var(--text-placeholder);
+}
+
+.record-delete {
+  font-size: 24rpx;
+  color: #ff4d4f;
 }
 
 .record-item-info {
@@ -146,4 +157,28 @@
 
 .empty-text {
   color: var(--text-placeholder);
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.modal-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.modal-content {
+  position: absolute;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 32rpx;
+  max-height: 70vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx;
 }

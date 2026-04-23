@@ -6,7 +6,8 @@ Page({
     userInfo: null,
     isLoggedIn: false,
     courseList: [],
-    recentNotes: []
+    recentNotes: [],
+    showQuickMenu: false
   },
 
   onLoad() {
@@ -18,48 +19,49 @@ Page({
     this.loadUserData();
   },
 
-  // 加载用户数据
   async loadUserData() {
     const app = getApp();
+    const token = wx.getStorageSync('token');
+    const userInfo = wx.getStorageSync('userInfo');
+    const isLoggedIn = !!(token && userInfo);
 
-    // 获取登录状态
     this.setData({
-      isLoggedIn: app.globalData.isLoggedIn,
-      userInfo: app.globalData.userInfo
+      isLoggedIn: isLoggedIn,
+      userInfo: userInfo || app.globalData.userInfo
     });
 
-    // 加载课程列表
-    await this.loadCourseList();
+    app.globalData.isLoggedIn = isLoggedIn;
+    if (userInfo) {
+      app.globalData.userInfo = userInfo;
+    }
 
-    // 加载最近笔记
+    await this.loadCourseList();
     await this.loadRecentNotes();
   },
 
-  // 加载课程列表
   async loadCourseList() {
     try {
       const courses = await api.getCourses();
-
-      if (courses && courses.length > 0) {
-        // 格式化数据
-        const courseList = courses.map(course => ({
+      const notes = await api.getNotes();
+      
+      const courseList = courses.map(course => {
+        const courseId = course._id || course.id;
+        const noteCount = notes.filter(n => n.courseId === course.id || n.courseId === course._id || n.courseId === courseId).length;
+        const courseNotes = notes.filter(n => n.courseId === course.id || n.courseId === course._id || n.courseId === courseId);
+        const latestNote = courseNotes[0];
+        
+        return {
           ...course,
-          noteCount: course.noteCount || 0,
-          updateTime: this.formatTimeAgo(course.updateTime)
-        }));
-        this.setData({ courseList });
-      } else {
-        // 使用默认数据
-        this.setData({
-          courseList: [
-            { id: 1, name: '高等数学', noteCount: 0, updateTime: '暂无笔记' },
-            { id: 2, name: '大学英语', noteCount: 0, updateTime: '暂无笔记' },
-            { id: 3, name: '计算机基础', noteCount: 0, updateTime: '暂无笔记' }
-          ]
-        });
-      }
+          id: courseId,
+          noteCount,
+          updateTime: latestNote ? this.formatTimeAgo(latestNote.updateTime || latestNote.createTime) : '暂无笔记'
+        };
+      });
+      
+      this.setData({ courseList });
     } catch (error) {
       console.error('加载课程失败:', error);
+      this.setData({ courseList: [] });
     }
   },
 
@@ -138,9 +140,18 @@ Page({
       wx.showToast({ title: '请先登录', icon: 'none' });
       return;
     }
-    wx.showToast({
-      title: '课程列表功能开发中',
-      icon: 'none'
+    wx.navigateTo({
+      url: '/pages/courses/courses'
+    });
+  },
+
+  viewAllNotesLegacy() {
+    if (!this.data.isLoggedIn) {
+      wx.showToast({ title: '请先登录', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: '/pages/notes/notes'
     });
   },
 
@@ -150,9 +161,8 @@ Page({
       wx.showToast({ title: '请先登录', icon: 'none' });
       return;
     }
-    wx.showToast({
-      title: '笔记列表功能开发中',
-      icon: 'none'
+    wx.navigateTo({
+      url: '/pages/notes/notes'
     });
   },
 
@@ -190,6 +200,55 @@ Page({
   goToSearch() {
     wx.navigateTo({
       url: '/pages/search/search'
+    });
+  },
+
+  // 显示快速创建菜单
+  showQuickCreate() {
+    this.setData({ showQuickMenu: true });
+  },
+
+  // 隐藏快速创建菜单
+  hideQuickCreate() {
+    this.setData({ showQuickMenu: false });
+  },
+
+  // 创建课程
+  createCourse() {
+    this.hideQuickCreate();
+    wx.navigateTo({
+      url: '/pages/courses/courses'
+    });
+  },
+
+  // 创建笔记
+  createNote() {
+    this.hideQuickCreate();
+    if (this.data.courseList.length === 0) {
+      wx.showModal({
+        title: '提示',
+        content: '请先创建课程',
+        confirmText: '去创建',
+        success: (res) => {
+          if (res.confirm) {
+            wx.navigateTo({
+              url: '/pages/courses/courses'
+            });
+          }
+        }
+      });
+      return;
+    }
+    wx.navigateTo({
+      url: '/pages/note-edit/note-edit'
+    });
+  },
+
+  // 开始录音
+  startRecord() {
+    this.hideQuickCreate();
+    wx.switchTab({
+      url: '/pages/record/record'
     });
   }
 });

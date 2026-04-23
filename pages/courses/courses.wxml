@@ -6,7 +6,7 @@
       wx:for="{{courses}}"
       wx:key="id"
     >
-      <view class="course-info" bindtap="viewCourseNotes" data-id="{{item.id}}">
+      <view class="course-info" bindtap="viewCourseNotes" data-id="{{item._id || item.id}}">
         <view class="course-icon">📚</view>
         <view class="course-detail">
           <text class="course-name">{{item.name}}</text>
@@ -15,7 +15,7 @@
       </view>
       <view class="course-actions">
         <text class="action-btn" bindtap="showEditModal" data-course="{{item}}">编辑</text>
-        <text class="action-btn delete" bindtap="deleteCourse" data-id="{{item.id}}">删除</text>
+        <text class="action-btn delete" bindtap="deleteCourse" data-id="{{item._id || item.id}}">删除</text>
       </view>
     </view>
 

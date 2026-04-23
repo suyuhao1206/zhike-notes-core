@@ -1,0 +1,23 @@
+{
+  "name": "zhi-ke-notes",
+  "version": "2.0.0",
+  "description": "智课笔记 - 基于Agent-Native架构的智能学习助手",
+  "main": "app.js",
+  "dependencies": {
+    "uuid": "^9.0.0",
+    "eventemitter3": "^5.0.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "wechat-miniprogram",
+    "ai",
+    "education",
+    "rag",
+    "agent"
+  ],
+  "author": "AI-GROUP-20",
+  "license": "MIT"
+}

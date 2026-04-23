@@ -120,7 +120,7 @@ Page({
         wx.navigateTo({ url: '/pages/ocr/ocr' });
         break;
       case 'flashcards':
-        wx.showToast({ title: '背诵卡片功能开发中', icon: 'none' });
+        wx.navigateTo({ url: '/pages/flashcard/flashcard' });
         break;
     }
   },
@@ -188,5 +188,74 @@ Page({
   // 帮助中心
   goToHelp() {
     wx.navigateTo({ url: '/pages/help/help' });
+  },
+
+  // 云存储管理
+  goToCloudStorage() {
+    wx.navigateTo({ url: '/pages/cloud-storage/cloud-storage' });
+  },
+
+  // API配置
+  goToConfig() {
+    wx.navigateTo({ url: '/pages/config/config' });
+  },
+
+  // 清理重复数据
+  async cleanupDuplicates() {
+    wx.showModal({
+      title: '清理重复数据',
+      content: '检测并清理重复的课程数据，保留最新的。是否继续？',
+      success: async (res) => {
+        if (res.confirm) {
+          wx.showLoading({ title: '清理中...', mask: true });
+          
+          try {
+            const courses = wx.getStorageSync('courses') || [];
+            
+            const seenNames = new Map();
+            const uniqueCourses = [];
+            let removedCount = 0;
+            
+            for (const course of courses) {
+              const name = course.name;
+              
+              if (!seenNames.has(name)) {
+                seenNames.set(name, course);
+                uniqueCourses.push(course);
+              } else {
+                const existing = seenNames.get(name);
+                const existingTime = new Date(existing.createTime || existing.updateTime || 0).getTime();
+                const currentTime = new Date(course.createTime || course.updateTime || 0).getTime();
+                
+                if (currentTime > existingTime) {
+                  const index = uniqueCourses.findIndex(c => c.name === name);
+                  uniqueCourses[index] = course;
+                  seenNames.set(name, course);
+                  removedCount++;
+                } else {
+                  removedCount++;
+                }
+              }
+            }
+            
+            wx.setStorageSync('courses', uniqueCourses);
+            wx.hideLoading();
+            
+            wx.showModal({
+              title: '清理完成',
+              content: `原有：${courses.length}个课程\n清理：${removedCount}个重复\n保留：${uniqueCourses.length}个课程`,
+              showCancel: false,
+              success: () => {
+                this.loadStats();
+              }
+            });
+            
+          } catch (error) {
+            wx.hideLoading();
+            wx.showToast({ title: '清理失败', icon: 'none' });
+          }
+        }
+      }
+    });
   }
 })
