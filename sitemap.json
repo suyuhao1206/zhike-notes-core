@@ -1,5 +1,5 @@
 {
-  "desc": "\u5173\u4e8e\u672c\u5c0f\u7a0b\u5e8f\u7684\u7d22\u5f15\uff0c\u53ef\u88ab\u5fae\u4fe1\u641c\u7d22\u5230",
+  "desc": "关于本小程序的索引，可被微信搜索到",
   "rules": [
     {
       "action": "allow",
