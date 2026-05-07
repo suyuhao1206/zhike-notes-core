@@ -2,9 +2,6 @@
 node_modules/
 miniprogram_npm/
 
-cloudfunctions/all/
-cloudfunctions/cloud1-*/
-
 project.private.config.json
 config/project.private.config.json
 
