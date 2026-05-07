@@ -1,7 +1,7 @@
 {
   "name": "aiImage",
   "version": "1.0.0",
-  "description": "AI 生图云函数",
+  "description": "AI image cloud function",
   "main": "index.js",
   "dependencies": {
     "wx-server-sdk": "~2.6.3"

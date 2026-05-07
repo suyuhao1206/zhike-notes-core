@@ -1,11 +1,11 @@
 {
   "name": "zhi-ke-notes",
   "version": "2.0.0",
-  "description": "智课笔记 - 基于Agent-Native架构的智能学习助手",
+  "description": "\u667a\u8bfe\u7b14\u8bb0 - \u57fa\u4e8e Agent-Native \u67b6\u6784\u7684\u667a\u80fd\u5b66\u4e60\u52a9\u624b",
   "main": "app.js",
   "dependencies": {
-    "uuid": "^9.0.0",
-    "eventemitter3": "^5.0.1"
+    "eventemitter3": "^5.0.1",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {},
   "scripts": {
