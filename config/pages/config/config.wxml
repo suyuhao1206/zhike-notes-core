@@ -1,54 +1,6 @@
 <view class="container">
-  <!-- 说明卡片 -->
   <view class="info-card">
-    <text class="info-title">📋 Coze API 配置</text>
-    <text class="info-desc">配置Coze平台的API密钥，以启用AI功能</text>
-    <text class="help-link" bindtap="showHelp">查看配置帮助 ></text>
-  </view>
-
-  <!-- Token配置 -->
-  <view class="config-card">
-    <view class="card-header">
-      <text class="card-title">API Token</text>
-    </view>
-    <view class="input-group">
-      <text class="input-label">Coze Token</text>
-      <input
-        class="input-field"
-        type="text"
-        placeholder="请输入Coze Token"
-        value="{{cozeToken}}"
-        bindinput="onTokenInput"
-      />
-    </view>
-  </view>
-
-  <!-- Bot配置 -->
-  <view class="config-card">
-    <view class="card-header">
-      <text class="card-title">Bot ID 配置</text>
-    </view>
-    <view class="input-group" wx:for="{{bots}}" wx:for-item="botId" wx:for-index="botType" wx:key="botType">
-      <text class="input-label">{{botLabels[botType]}}</text>
-      <input
-        class="input-field"
-        type="text"
-        placeholder="请输入Bot ID"
-        value="{{botId}}"
-        data-type="{{botType}}"
-        bindinput="onBotInput"
-      />
-    </view>
-  </view>
-
-  <!-- 按钮组 -->
-  <view class="button-group">
-    <button class="btn-test" bindtap="testConnection">测试连接</button>
-    <button class="btn-save" bindtap="saveConfig">保存配置</button>
-  </view>
-
-  <!-- 提示信息 -->
-  <view class="tips">
-    <text class="tips-text">💡 提示：Token和Bot ID可在 Coze 平台获取</text>
+    <text class="info-title">AI 云端网关</text>
+    <text class="info-desc">密钥只在 aiRouter 云函数环境变量中配置。</text>
   </view>
 </view>

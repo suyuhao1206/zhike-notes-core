@@ -1,68 +1,10 @@
 <view class="container">
-  <!-- 说明卡片 -->
   <view class="info-card">
-    <text class="info-title">📋 Coze API 配置</text>
-    <text class="info-desc">配置Coze平台的API密钥，以启用AI功能</text>
-    <text class="help-link" bindtap="showHelp">查看配置帮助 ></text>
+    <text class="info-title">AI 云端网关</text>
+    <text class="info-desc">Coze 与讯飞密钥只在 aiRouter 云函数环境变量中配置，小程序端不保存任何外部 API 密钥。</text>
+    <text class="help-link" bindtap="showHelp">查看云端配置说明 ></text>
   </view>
 
-  <!-- Token配置 -->
-  <view class="config-card">
-    <view class="card-header">
-      <text class="card-title">API Token</text>
-    </view>
-    <view class="input-group">
-      <text class="input-label">Coze Token</text>
-      <input
-        class="input-field"
-        type="text"
-        placeholder="请输入Coze Token"
-        value="{{cozeToken}}"
-        bindinput="onTokenInput"
-      />
-    </view>
-  </view>
-
-  <view class="config-card">
-    <view class="card-header">
-      <text class="card-title">讯飞录音转写配置</text>
-    </view>
-    <view class="input-group">
-      <text class="input-label">讯飞 APPID</text>
-      <input
-        class="input-field"
-        type="text"
-        placeholder="请输入讯飞 APPID"
-        value="{{xfyun.appId}}"
-        data-field="appId"
-        bindinput="onXfyunInput"
-      />
-    </view>
-    <view class="input-group">
-      <text class="input-label">讯飞 APIKey</text>
-      <input
-        class="input-field"
-        type="text"
-        placeholder="请输入讯飞 APIKey"
-        value="{{xfyun.apiKey}}"
-        data-field="apiKey"
-        bindinput="onXfyunInput"
-      />
-    </view>
-    <view class="input-group">
-      <text class="input-label">讯飞 APISecret</text>
-      <input
-        class="input-field"
-        type="text"
-        placeholder="请输入讯飞 APISecret"
-        value="{{xfyun.apiSecret}}"
-        data-field="apiSecret"
-        bindinput="onXfyunInput"
-      />
-    </view>
-  </view>
-
-  <!-- Bot配置 -->
   <view class="config-card">
     <view class="card-header">
       <text class="card-title">Bot ID 配置</text>
@@ -72,7 +14,7 @@
       <input
         class="input-field"
         type="text"
-        placeholder="请输入Bot ID"
+        placeholder="请输入 Bot ID"
         value="{{botId}}"
         data-type="{{botType}}"
         bindinput="onBotInput"
@@ -80,14 +22,12 @@
     </view>
   </view>
 
-  <!-- 按钮组 -->
   <view class="button-group">
-    <button class="btn-test" bindtap="testConnection">测试连接</button>
-    <button class="btn-save" bindtap="saveConfig">保存配置</button>
+    <button class="btn-test" bindtap="testConnection">测试云端网关</button>
+    <button class="btn-save" bindtap="saveConfig">保存 Bot ID</button>
   </view>
 
-  <!-- 提示信息 -->
   <view class="tips">
-    <text class="tips-text">💡 提示：Coze 和讯飞密钥都会保存在本地缓存中，不再依赖云函数环境变量</text>
+    <text class="tips-text">提示：Token、APPID、APIKey、APISecret 均不会写入本地缓存。</text>
   </view>
 </view>

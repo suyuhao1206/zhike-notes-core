@@ -13,6 +13,7 @@ class Orchestrator {
     this.toolRegistry = new ToolRegistry()
     this.capabilityRegistry = new CapabilityRegistry()
     this.initialized = false
+    this.initPromise = null
   }
 
   /**
@@ -20,11 +21,18 @@ class Orchestrator {
    */
   async init() {
     if (this.initialized) return
+    if (this.initPromise) return this.initPromise
 
-    await this.toolRegistry.loadTools()
-    await this.capabilityRegistry.loadCapabilities()
-    
-    this.initialized = true
+    this.initPromise = (async () => {
+      await this.toolRegistry.loadTools()
+      await this.capabilityRegistry.loadCapabilities()
+      this.initialized = true
+    })().catch(error => {
+      this.initPromise = null
+      throw error
+    })
+
+    return this.initPromise
   }
 
   /**

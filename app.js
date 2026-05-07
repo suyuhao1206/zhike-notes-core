@@ -1,34 +1,14 @@
-const internalAIConfig = require('./config/ai.config.js');
-const DB = require('./utils/db.js');
+const internalAIConfig = require('./config/ai.config.js')
+const DB = require('./utils/db.js')
 const { getOrchestrator } = require('./core/orchestrator')
 const { getAIService } = require('./services/aiService')
 
+const CLOUD_ENV = 'cloud1-6gegqlssbeb8ee83'
+
 App({
   onLaunch() {
-    console.log('🚀 智课笔记启动中...')
-    
-    if (wx.cloud) {
-      wx.cloud.init({
-        env: 'REDACTED_CLOUD_ENV',
-        traceUser: true
-      });
-      console.log('✅ 云开发环境初始化成功');
-      
-      DB.init();
-    } else {
-      console.warn('请使用 2.2.3 或以上的基础库以使用云能力');
-    }
-
-    this.checkLoginStatus();
-
-    this.initAIConfig();
-    
-    // 延迟初始化新架构，避免阻塞启动
-    setTimeout(() => {
-      this.initNewArchitecture().catch(err => {
-        console.error('新架构初始化失败:', err);
-      });
-    }, 100);
+    console.log('Zhike Notes starting...')
+    this.initPromise = this.bootstrap()
   },
 
   globalData: {
@@ -36,317 +16,275 @@ App({
     isLoggedIn: false,
     openId: null,
     token: null,
-    aiConfig: {
-      provider: 'coze',
-      providers: {
-        coze: {
-          baseUrl: 'https://api.coze.cn/v1',
-          apiKey: '',
-          bots: {
-            noteSummary: '',
-            qaAssistant: '',
-            examGenerator: '',
-            flashcardGen: '',
-            ocrVision: '',
-            audioTranscribe: ''
-          }
-        },
-        xfyun: {
-          appId: '',
-          apiKey: '',
-          apiSecret: '',
-          baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
-        },
-        openai: {
-          baseUrl: 'https://api.openai.com/v1',
-          apiKey: '',
-          model: 'gpt-4o-mini'
-        },
-        compatible: {
-          baseUrl: '',
-          apiKey: '',
-          model: ''
-        }
-      }
-    },
+    appReady: false,
+    aiConfig: internalAIConfig.getAIConfigByEnv('develop'),
     cozeConfig: {
-      baseUrl: 'https://api.coze.cn/v1',
-      token: '',  // 需要配置你的 Coze Token
-      bots: {
-        noteSummary: '',  // 笔记总结 Bot ID
-        qaAssistant: '',  // 答疑助手 Bot ID
-        examGenerator: '', // 试卷生成 Bot ID
-        flashcardGen: '',  // 卡片生成 Bot ID
-        ocrVision: '',     // 图片识别 Bot ID
-        audioTranscribe: '' // 录音转写 Bot ID
-      }
+      baseUrl: 'cloud://aiRouter',
+      token: '',
+      bots: { ...internalAIConfig.defaultBots }
     },
     xfyunConfig: {
+      baseUrl: 'cloud://aiRouter',
       appId: '',
       apiKey: '',
-      apiSecret: '',
-      baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
+      apiSecret: ''
     }
   },
 
-  // 获取当前运行环境
+  async bootstrap() {
+    try {
+      if (wx.cloud) {
+        wx.cloud.init({
+          env: CLOUD_ENV,
+          traceUser: true
+        })
+        await DB.init()
+      } else {
+        console.warn('wx.cloud is not available. Please use base library 2.2.3 or later.')
+      }
+
+      this.clearLegacyAISecrets()
+      this.checkLoginStatus()
+      this.initAIConfig()
+      await this.initNewArchitecture()
+      this.globalData.appReady = true
+    } catch (error) {
+      console.error('App bootstrap failed:', error)
+      this.globalData.appReady = false
+    }
+  },
+
+  ensureReady() {
+    return this.initPromise || Promise.resolve()
+  },
+
   getEnvVersion() {
     try {
-      const accountInfo = wx.getAccountInfoSync && wx.getAccountInfoSync();
-      return (accountInfo && accountInfo.miniProgram && accountInfo.miniProgram.envVersion) || 'develop';
-    } catch (e) {
-      return 'develop';
+      const accountInfo = wx.getAccountInfoSync && wx.getAccountInfoSync()
+      return (accountInfo && accountInfo.miniProgram && accountInfo.miniProgram.envVersion) || 'develop'
+    } catch (error) {
+      return 'develop'
     }
   },
 
-  // 初始化 AI 配置
   initAIConfig() {
-    const envVersion = this.getEnvVersion();
-    const envConfig = internalAIConfig.getAIConfigByEnv(envVersion);
-    this.globalData.aiConfig = envConfig;
+    const envConfig = internalAIConfig.getAIConfigByEnv(this.getEnvVersion())
+    const savedBots = wx.getStorageSync('cozeBots')
+    const aiConfig = this.sanitizeAIConfig(envConfig)
 
-    // 开发/体验环境允许本地覆写，正式环境强制使用内置配置
-    const canUseRuntimeOverride = envVersion === 'develop' || envVersion === 'trial';
-
-    const cozeToken = wx.getStorageSync('cozeToken');
-    const cozeBots = wx.getStorageSync('cozeBots');
-    const xfyunConfig = wx.getStorageSync('xfyunConfig');
-    const aiConfig = wx.getStorageSync('aiConfig');
-
-    if (canUseRuntimeOverride && aiConfig && aiConfig.providers) {
-      this.globalData.aiConfig = this.mergeAIConfig(envConfig, aiConfig);
-    }
-
-    if (cozeToken) {
-      this.globalData.cozeConfig.token = cozeToken;
-      this.globalData.aiConfig.providers.coze.apiKey = cozeToken;
-    }
-    if (cozeBots) {
-      const savedBots = Object.keys(cozeBots).reduce((result, key) => {
-        if (cozeBots[key]) result[key] = cozeBots[key];
-        return result;
-      }, {});
-      const mergedBots = {
-        ...(this.globalData.aiConfig.providers.coze.bots || {}),
-        ...savedBots
-      };
-      this.globalData.cozeConfig.bots = mergedBots;
-      this.globalData.aiConfig.providers.coze.bots = mergedBots;
-    }
-
-    if (xfyunConfig && (xfyunConfig.appId || xfyunConfig.apiKey || xfyunConfig.apiSecret)) {
-      const normalizedXfyunConfig = this.normalizeXfyunConfig(xfyunConfig);
-      const mergedXfyunConfig = {
-        ...(this.globalData.aiConfig.providers.xfyun || {}),
-        ...normalizedXfyunConfig
-      };
-      this.globalData.xfyunConfig = mergedXfyunConfig;
-      this.globalData.aiConfig.providers.xfyun = mergedXfyunConfig;
-      wx.setStorageSync('xfyunConfig', mergedXfyunConfig);
-      wx.setStorageSync('aiConfig', this.globalData.aiConfig);
-    }
-
-    // 同步 cozeConfig 与 aiConfig.coze，避免旧代码失效
-    this.syncCozeConfigFromAI();
-    this.syncXfyunConfigFromAI();
-  },
-
-  mergeAIConfig(baseConfig, runtimeConfig) {
-    const merged = {
-      ...baseConfig,
-      ...runtimeConfig,
-      providers: {
-        ...(baseConfig.providers || {}),
-        ...(runtimeConfig.providers || {})
+    if (savedBots && aiConfig.providers && aiConfig.providers.coze) {
+      aiConfig.providers.coze.bots = {
+        ...(aiConfig.providers.coze.bots || {}),
+        ...this.compactObject(savedBots)
       }
-    };
-    return merged;
+    }
+
+    this.globalData.aiConfig = aiConfig
+    this.syncCozeConfigFromAI()
+    this.syncXfyunConfigFromAI()
   },
 
-  normalizeXfyunConfig(config = {}) {
-    return { ...config };
+  sanitizeAIConfig(config = {}) {
+    const clone = JSON.parse(JSON.stringify(config || {}))
+    const providers = clone.providers || {}
+
+    Object.keys(providers).forEach(providerName => {
+      delete providers[providerName].token
+      delete providers[providerName].apiKey
+      delete providers[providerName].apiSecret
+      delete providers[providerName].secret
+    })
+
+    clone.provider = 'cloud'
+    return clone
   },
 
-  maskSecret(value = '', left = 4, right = 4) {
-    const text = String(value || '');
-    if (!text) return '(empty)';
-    if (text.length <= left + right) return `${text.slice(0, 1)}***${text.slice(-1)}`;
-    return `${text.slice(0, left)}***${text.slice(-right)}`;
+  compactObject(value = {}) {
+    return Object.keys(value).reduce((result, key) => {
+      if (value[key]) result[key] = value[key]
+      return result
+    }, {})
+  },
+
+  clearLegacyAISecrets() {
+    wx.removeStorageSync('cozeToken')
+    wx.removeStorageSync('xfyunConfig')
+
+    const storedAIConfig = wx.getStorageSync('aiConfig')
+    if (storedAIConfig && JSON.stringify(storedAIConfig).match(/apiKey|apiSecret|token/i)) {
+      wx.removeStorageSync('aiConfig')
+    }
   },
 
   syncCozeConfigFromAI() {
-    const cozeProvider = this.globalData.aiConfig.providers.coze || {};
-    this.globalData.cozeConfig.baseUrl = cozeProvider.baseUrl || 'https://api.coze.cn/v1';
-    this.globalData.cozeConfig.token = cozeProvider.apiKey || '';
-    this.globalData.cozeConfig.bots = cozeProvider.bots || {};
+    const cozeProvider = (this.globalData.aiConfig.providers && this.globalData.aiConfig.providers.coze) || {}
+    this.globalData.cozeConfig = {
+      baseUrl: 'cloud://aiRouter',
+      token: '',
+      bots: cozeProvider.bots || {}
+    }
   },
 
   syncXfyunConfigFromAI() {
-    const xfyunProvider = this.globalData.aiConfig.providers.xfyun || {};
     this.globalData.xfyunConfig = {
-      appId: xfyunProvider.appId || '',
-      apiKey: xfyunProvider.apiKey || '',
-      apiSecret: xfyunProvider.apiSecret || '',
-      baseUrl: xfyunProvider.baseUrl || 'https://office-api-ist-dx.iflyaisol.com'
-    };
-
-    console.log('🔐 当前讯飞配置摘要:', {
-      appId: this.maskSecret(this.globalData.xfyunConfig.appId, 3, 2),
-      apiKey: this.maskSecret(this.globalData.xfyunConfig.apiKey, 6, 4),
-      apiSecret: this.maskSecret(this.globalData.xfyunConfig.apiSecret, 6, 4),
-      baseUrl: this.globalData.xfyunConfig.baseUrl
-    });
+      baseUrl: 'cloud://aiRouter',
+      appId: '',
+      apiKey: '',
+      apiSecret: ''
+    }
   },
 
   async initNewArchitecture() {
-    try {
-      console.log('📦 初始化新架构...')
-      
+    if (this.archInitPromise) return this.archInitPromise
+
+    this.archInitPromise = (async () => {
       const aiService = getAIService()
       aiService.init(this.globalData.aiConfig)
-      console.log('✅ AI服务初始化完成')
 
       const orchestrator = getOrchestrator()
       await orchestrator.init()
-      console.log('✅ 编排器初始化完成')
-      
-      const capabilities = orchestrator.getAvailableCapabilities()
-      console.log('📋 可用能力:', capabilities)
-      
-      const tools = orchestrator.getAvailableTools()
-      console.log('🔧 可用工具:', tools)
-      
-      // 保存到全局，方便页面访问
       this.orchestrator = orchestrator
-      
-      console.log('✅ 新架构初始化完成')
-    } catch (error) {
-      console.error('❌ 新架构初始化失败:', error)
-      console.log('💡 提示: 新架构初始化失败不影响基础功能使用')
-    }
+
+      console.log('Architecture initialized:', {
+        capabilities: orchestrator.getAvailableCapabilities(),
+        tools: orchestrator.getAvailableTools()
+      })
+    })().catch(error => {
+      this.archInitPromise = null
+      console.error('Architecture initialization failed:', error)
+      throw error
+    })
+
+    return this.archInitPromise
   },
 
   setAIConfig(config) {
-    this.globalData.aiConfig = config;
-    wx.setStorageSync('aiConfig', config);
-    this.syncCozeConfigFromAI();
-    this.syncXfyunConfigFromAI();
+    this.globalData.aiConfig = this.sanitizeAIConfig(config)
+    this.syncCozeConfigFromAI()
+    this.syncXfyunConfigFromAI()
   },
 
-  // 设置 Coze Token
-  setCozeToken(token) {
-    this.globalData.cozeConfig.token = token;
-    this.globalData.aiConfig.providers.coze.apiKey = token;
-    wx.setStorageSync('aiConfig', this.globalData.aiConfig);
-    wx.setStorageSync('cozeToken', token);
+  setCozeToken() {
+    wx.removeStorageSync('cozeToken')
+    console.warn('Coze Token must be configured in the aiRouter cloud function environment.')
   },
 
-  // 设置 Coze Bot IDs
-  setCozeBots(bots) {
-    this.globalData.cozeConfig.bots = bots;
-    this.globalData.aiConfig.providers.coze.bots = bots;
-    wx.setStorageSync('aiConfig', this.globalData.aiConfig);
-    wx.setStorageSync('cozeBots', bots);
-  },
-
-  setXfyunConfig(config = {}) {
-    const hasCustomValue = !!(config.appId || config.apiKey || config.apiSecret);
-    const normalizedConfig = this.normalizeXfyunConfig(config);
-    const nextConfig = {
-      ...(this.globalData.aiConfig.providers.xfyun || {}),
-      ...(hasCustomValue ? normalizedConfig : {}),
-      baseUrl: normalizedConfig.baseUrl || (this.globalData.aiConfig.providers.xfyun || {}).baseUrl || 'https://office-api-ist-dx.iflyaisol.com'
-    };
-    this.globalData.xfyunConfig = nextConfig;
-    this.globalData.aiConfig.providers.xfyun = nextConfig;
-    wx.setStorageSync('aiConfig', this.globalData.aiConfig);
-    if (hasCustomValue) {
-      wx.setStorageSync('xfyunConfig', nextConfig);
-    } else {
-      wx.removeStorageSync('xfyunConfig');
+  setCozeBots(bots = {}) {
+    const nextBots = this.compactObject(bots)
+    this.globalData.cozeConfig.bots = nextBots
+    if (this.globalData.aiConfig.providers && this.globalData.aiConfig.providers.coze) {
+      this.globalData.aiConfig.providers.coze.bots = nextBots
     }
+    wx.setStorageSync('cozeBots', nextBots)
   },
 
-  // 检查登录状态
+  setXfyunConfig() {
+    wx.removeStorageSync('xfyunConfig')
+    console.warn('Xfyun credentials must be configured in the aiRouter cloud function environment.')
+  },
+
   checkLoginStatus() {
-    const token = wx.getStorageSync('token');
-    const userInfo = wx.getStorageSync('userInfo');
-    const openId = wx.getStorageSync('openId');
+    const token = wx.getStorageSync('token')
+    const userInfo = wx.getStorageSync('userInfo')
+    const openId = wx.getStorageSync('openId')
 
-    if (token && userInfo) {
-      this.globalData.isLoggedIn = true;
-      this.globalData.userInfo = userInfo;
-      this.globalData.openId = openId;
-      this.globalData.token = token;
+    if (token && userInfo && openId) {
+      this.globalData.isLoggedIn = true
+      this.globalData.userInfo = userInfo
+      this.globalData.openId = openId
+      this.globalData.token = token
     }
   },
 
-  // 微信登录
   wxLogin() {
     return new Promise((resolve, reject) => {
-      wx.showLoading({ title: '登录中...' });
-
-      // 注意：getUserProfile 必须由用户点击手势直接触发
-      this.requestUserProfile(resolve, reject);
-    });
+      wx.showLoading({ title: '登录中...' })
+      this.requestUserProfile(resolve, reject)
+    })
   },
 
-  // 获取用户信息（必须在 tap 触发链路中调用）
   requestUserProfile(resolve, reject) {
     wx.getUserProfile({
       desc: '用于完善用户资料',
-      success: (res) => {
-        const userInfo = res.userInfo;
-        this.requestWxLoginCode(userInfo, resolve, reject);
+      success: res => {
+        this.requestWxLoginCode(res.userInfo, resolve, reject)
       },
-      fail: (err) => {
-        console.error('获取用户信息失败:', err);
+      fail: error => {
+        console.error('getUserProfile failed:', error)
 
-        // 开发/体验环境允许免授权登录，避免调试被阻塞
         if (this.isTestOrDevelopEnv()) {
-          const mockUser = this.getMockUserInfo();
-          this.handleLogin(`mock_code_${Date.now()}`, mockUser, resolve, reject);
-          wx.showToast({ title: '已使用测试身份登录', icon: 'none' });
-          return;
+          this.handleLogin(`mock_code_${Date.now()}`, this.getMockUserInfo(), resolve, reject)
+          wx.showToast({ title: '已使用测试身份登录', icon: 'none' })
+          return
         }
 
-        this.finishLoginWithError(err, reject, '需要授权才能使用');
+        this.finishLoginWithError(error, reject, '需要授权后才能使用')
       }
-    });
+    })
   },
 
-  // 获取微信登录 code
   requestWxLoginCode(userInfo, resolve, reject) {
     wx.login({
-      success: (res) => {
+      success: res => {
         if (res.code) {
-          this.handleLogin(res.code, userInfo, resolve, reject);
+          this.handleLogin(res.code, userInfo, resolve, reject)
         } else {
-          this.finishLoginWithError(new Error('登录失败：' + res.errMsg), reject);
+          this.finishLoginWithError(new Error(`登录失败：${res.errMsg}`), reject)
         }
       },
-      fail: (err) => {
-        this.finishLoginWithError(err, reject);
+      fail: error => this.finishLoginWithError(error, reject)
+    })
+  },
+
+  async handleLogin(code, userInfo, resolve, reject) {
+    try {
+      const openId = await this.getOpenIdFromCloud()
+      const data = {
+        openId,
+        token: `wx_session_${openId}`,
+        userInfo,
+        code
       }
-    });
-  },
 
-  // 统一处理登录失败，避免 hideLoading 重复调用
-  finishLoginWithError(error, reject, toastTitle) {
-    wx.hideLoading();
-    if (toastTitle) {
-      wx.showToast({ title: toastTitle, icon: 'none' });
+      wx.setStorageSync('token', data.token)
+      wx.setStorageSync('userInfo', userInfo)
+      wx.setStorageSync('openId', openId)
+
+      this.globalData.isLoggedIn = true
+      this.globalData.userInfo = userInfo
+      this.globalData.openId = openId
+      this.globalData.token = data.token
+
+      wx.hideLoading()
+      wx.showToast({ title: '登录成功', icon: 'success' })
+      resolve(data)
+    } catch (error) {
+      this.finishLoginWithError(error, reject, '请先联网完成身份初始化')
     }
-    reject(error);
   },
 
-  // 是否为开发/体验环境
+  async getOpenIdFromCloud() {
+    if (!wx.cloud || !wx.cloud.callFunction) {
+      throw new Error('Cloud functions are not available')
+    }
+
+    const res = await wx.cloud.callFunction({ name: 'getOpenId' })
+    const openId = res && res.result && res.result.openid
+    if (!openId) throw new Error('OpenId is empty')
+    return openId
+  },
+
+  finishLoginWithError(error, reject, toastTitle) {
+    wx.hideLoading()
+    if (toastTitle) wx.showToast({ title: toastTitle, icon: 'none' })
+    reject(error)
+  },
+
   isTestOrDevelopEnv() {
-    const envVersion = this.getEnvVersion();
-    return envVersion === 'develop' || envVersion === 'trial';
+    const envVersion = this.getEnvVersion()
+    return envVersion === 'develop' || envVersion === 'trial'
   },
 
-  // 测试用户信息（仅用于开发/体验环境）
   getMockUserInfo() {
     return {
       nickName: '测试用户',
@@ -356,91 +294,25 @@ App({
       city: '',
       province: '',
       country: 'China'
-    };
+    }
   },
 
-  // 处理登录
-  handleLogin(code, userInfo, resolve, reject) {
-    // 模拟服务器登录
-    // TODO: 替换为真实的后端登录接口
-    setTimeout(() => {
-      const mockData = {
-        openId: 'mock_openid_' + Date.now(),
-        token: 'mock_token_' + Date.now(),
-        userInfo: userInfo
-      };
-
-      // 保存到本地
-      wx.setStorageSync('token', mockData.token);
-      wx.setStorageSync('userInfo', userInfo);
-      wx.setStorageSync('openId', mockData.openId);
-
-      // 更新全局数据
-      this.globalData.isLoggedIn = true;
-      this.globalData.userInfo = userInfo;
-      this.globalData.openId = mockData.openId;
-      this.globalData.token = mockData.token;
-
-      wx.hideLoading();
-      wx.showToast({ title: '登录成功', icon: 'success' });
-      resolve(mockData);
-    }, 1000);
-
-    /* 真实后端调用示例：
-    wx.request({
-      url: 'https://your-server.com/api/login',
-      method: 'POST',
-      data: {
-        code: code,
-        userInfo: userInfo
-      },
-      success: (res) => {
-        if (res.data.code === 0) {
-          const data = res.data.data;
-
-          wx.setStorageSync('token', data.token);
-          wx.setStorageSync('userInfo', userInfo);
-          wx.setStorageSync('openId', data.openId);
-
-          this.globalData.isLoggedIn = true;
-          this.globalData.userInfo = userInfo;
-          this.globalData.openId = data.openId;
-          this.globalData.token = data.token;
-
-          wx.hideLoading();
-          wx.showToast({ title: '登录成功', icon: 'success' });
-          resolve(data);
-        } else {
-          wx.hideLoading();
-          reject(new Error(res.data.msg));
-        }
-      },
-      fail: (err) => {
-        wx.hideLoading();
-        reject(err);
-      }
-    });
-    */
-  },
-
-  // 设置用户信息
   setUserInfo(userInfo) {
-    this.globalData.userInfo = userInfo;
-    this.globalData.isLoggedIn = true;
-    wx.setStorageSync('userInfo', userInfo);
+    this.globalData.userInfo = userInfo
+    this.globalData.isLoggedIn = true
+    wx.setStorageSync('userInfo', userInfo)
   },
 
-  // 退出登录
   logout() {
-    this.globalData.userInfo = null;
-    this.globalData.isLoggedIn = false;
-    this.globalData.openId = null;
-    this.globalData.token = null;
+    this.globalData.userInfo = null
+    this.globalData.isLoggedIn = false
+    this.globalData.openId = null
+    this.globalData.token = null
 
-    wx.removeStorageSync('token');
-    wx.removeStorageSync('userInfo');
-    wx.removeStorageSync('openId');
+    wx.removeStorageSync('token')
+    wx.removeStorageSync('userInfo')
+    wx.removeStorageSync('openId')
 
-    wx.showToast({ title: '已退出登录', icon: 'success' });
+    wx.showToast({ title: '已退出登录', icon: 'success' })
   }
 })

@@ -1,519 +1,551 @@
-/**
- * 云优先存储引擎
- * 核心理念：云端是主力存储，本地是缓存和离线备份
- * 
- * 数据流向：用户操作 → 云端存储 → 本地缓存
- * 降级策略：仅在网络中断等不可抗力时使用本地
- */
+const CLOUD_ENV = 'cloud1-6gegqlssbeb8ee83'
+const DEFAULT_LIMIT = 100
+const SYNC_CONCURRENCY = 5
 
 const CloudFirstStorage = {
   isCloudReady: false,
   db: null,
   isOnline: true,
-  
+  initPromise: null,
+
   async init() {
-    try {
-      // 监听网络状态
-      wx.onNetworkStatusChange((res) => {
-        this.isOnline = res.isConnected;
-        console.log(`网络状态: ${res.isConnected ? '在线' : '离线'}`);
-      });
+    if (this.initPromise) return this.initPromise
 
-      // 检查当前网络
-      const networkRes = await wx.getNetworkType();
-      this.isOnline = networkRes.networkType !== 'none';
+    this.initPromise = (async () => {
+      this.bindNetworkListener()
+      await this.refreshNetworkStatus()
 
-      // 初始化云数据库
       if (typeof wx !== 'undefined' && wx.cloud) {
-        await wx.cloud.init({
-          env: 'REDACTED_CLOUD_ENV',
+        wx.cloud.init({
+          env: CLOUD_ENV,
           traceUser: true
-        });
-        this.db = wx.cloud.database();
-        this.isCloudReady = true;
-        console.log('✅ 云数据库初始化成功 - 云优先模式');
+        })
+        this.db = wx.cloud.database()
+        this.isCloudReady = true
+        console.log('Cloud database initialized')
       }
+    })().catch(error => {
+      this.isCloudReady = false
+      this.initPromise = null
+      console.error('Cloud database initialization failed:', error)
+      throw error
+    })
+
+    return this.initPromise
+  },
+
+  async ensureReady() {
+    if (!this.initPromise) {
+      await this.init()
+      return
+    }
+    await this.initPromise
+  },
+
+  bindNetworkListener() {
+    if (this.networkListenerBound || !wx.onNetworkStatusChange) return
+
+    wx.onNetworkStatusChange(res => {
+      this.isOnline = !!res.isConnected
+      if (this.isOnline) this.syncPendingData()
+    })
+    this.networkListenerBound = true
+  },
+
+  async refreshNetworkStatus() {
+    if (!wx.getNetworkType) return
+
+    try {
+      const res = await wx.getNetworkType()
+      this.isOnline = res.networkType !== 'none'
     } catch (error) {
-      console.error('云数据库初始化失败:', error);
-      this.isCloudReady = false;
+      console.warn('Failed to read network status:', error)
     }
   },
 
-  /**
-   * 保存数据 - 云优先
-   * 流程：云端保存 → 本地缓存
-   * 直接返回保存的文档（兼容旧代码）
-   */
-  async save(collection, data) {
-    const timestamp = Date.now();
-    const isoTime = new Date().toISOString();
-    const userId = await this.getUserId();
-    
+  async save(collection, data = {}) {
+    await this.ensureReady()
+
+    const now = new Date().toISOString()
+    const userId = await this.getUserId()
     const doc = this.filterInvalidFields({
       ...data,
-      userId: userId,
-      createTime: data.createTime || isoTime,
-      updateTime: isoTime,
+      id: data.id || data._id || this.generateLocalId(collection),
+      userId,
+      createTime: data.createTime || now,
+      updateTime: now,
       version: (data.version || 0) + 1
-    });
+    })
 
-    if (this.isOnline && this.isCloudReady) {
+    if (this.canUseCloud()) {
       try {
-        console.log(`☁️ 云端保存: ${collection}`);
-        
-        let result;
         if (doc._id) {
-          const docId = doc._id;
-          const docWithoutId = { ...doc };
-          delete docWithoutId._id;
-          result = await this.db.collection(collection).doc(docId).set({ data: docWithoutId });
-          console.log(`✅ 云端更新成功: ${docId}`);
-          doc._id = docId;
-        } else {
-          const docForAdd = { ...doc };
-          delete docForAdd._id;
-          result = await this.db.collection(collection).add({ data: docForAdd });
-          doc._id = result._id;
-          console.log(`✅ 云端创建成功: ${doc._id}`);
+          const docId = doc._id
+          const docForSet = { ...doc }
+          delete docForSet._id
+          await this.db.collection(collection).doc(docId).set({ data: docForSet })
+          this.saveToLocal(collection, { ...docForSet, _id: docId })
+          return { ...docForSet, _id: docId }
         }
-        
-        this.saveToLocal(collection, doc);
-        console.log(`📱 已同步到本地缓存`);
-        
-        return doc;
-        
-      } catch (cloudError) {
-        console.error('❌ 云端保存失败:', cloudError);
-        
-        if (this.isNetworkError(cloudError) || this.isMissingCollectionError(cloudError)) {
-          console.log('云端暂不可写，降级到本地存储');
-          return this.saveToLocalFallback(collection, doc);
-        } else {
-          throw new Error(`云端保存失败: ${cloudError.message}`);
+
+        const docForAdd = { ...doc }
+        delete docForAdd._id
+        const result = await this.db.collection(collection).add({ data: docForAdd })
+        const savedDoc = { ...docForAdd, _id: result._id }
+        this.saveToLocal(collection, savedDoc)
+        return savedDoc
+      } catch (error) {
+        if (!this.isNetworkError(error) && !this.isMissingCollectionError(error)) {
+          throw new Error(`Cloud save failed: ${error.message || error.errMsg || error}`)
         }
+        console.warn('Cloud save unavailable, using local pending queue:', error)
       }
     }
-    
-    console.log('📴 离线模式，保存到本地');
-    return this.saveToLocalFallback(collection, doc);
+
+    return this.saveToLocalFallback(collection, doc)
   },
 
-  /**
-   * 获取数据 - 云优先
-   * 直接返回数据对象（兼容旧代码）
-   */
+  async add(collection, data) {
+    return this.save(collection, data)
+  },
+
   async get(collection, id) {
-    if (this.isOnline && this.isCloudReady && id) {
+    await this.ensureReady()
+
+    if (this.canUseCloud() && id) {
       try {
-        console.log(`☁️ 云端获取: ${collection}/${id}`);
-        
+        const res = await this.db.collection(collection).doc(id).get()
+        if (res.data) {
+          this.saveToLocal(collection, res.data)
+          return res.data
+        }
+      } catch (docError) {
         try {
-          const res = await this.db.collection(collection).doc(id).get();
-          if (res.data) {
-            console.log(`✅ 云端获取成功`);
-            this.saveToLocal(collection, res.data);
-            return res.data;
-          }
-        } catch (docError) {
-          console.log('通过_id查询失败，尝试通过id字段查询');
-          
-          const userId = await this.getUserId();
+          const userId = await this.getUserId()
           const queryRes = await this.db.collection(collection)
-            .where({ userId, id: id })
+            .where({ userId, id })
             .limit(1)
-            .get();
-          
+            .get()
+
           if (queryRes.data && queryRes.data.length > 0) {
-            console.log(`✅ 通过id字段查询成功`);
-            this.saveToLocal(collection, queryRes.data[0]);
-            return queryRes.data[0];
+            this.saveToLocal(collection, queryRes.data[0])
+            return queryRes.data[0]
           }
-          
-          throw docError;
+        } catch (queryError) {
+          if (!this.isNetworkError(queryError) && !this.isMissingCollectionError(queryError)) {
+            throw new Error(`Cloud get failed: ${queryError.message || queryError.errMsg || queryError}`)
+          }
         }
-      } catch (cloudError) {
-        console.error('云端获取失败:', cloudError);
-        
-        if (this.isNetworkError(cloudError)) {
-          console.log('⚠️ 网络错误，尝试本地缓存');
-        } else if (cloudError.errMsg && cloudError.errMsg.includes('not found')) {
-          console.log('云端文档不存在，检查本地缓存');
-        } else {
-          throw new Error(`云端获取失败: ${cloudError.message}`);
+
+        if (!this.isNetworkError(docError) && !this.isMissingCollectionError(docError)) {
+          console.warn('Cloud doc get failed, checking local cache:', docError)
         }
       }
     }
-    
-    console.log(`📱 从本地获取: ${collection}/${id}`);
-    const localData = this.getFromLocal(collection, id);
-    return localData;
+
+    return this.getFromLocal(collection, id)
   },
 
-  /**
-   * 查询列表 - 云优先
-   * 直接返回数组（兼容旧代码）
-   */
   async list(collection, options = {}) {
-    const { where = {}, orderBy = 'updateTime', order = 'desc', limit = 100, skip = 0 } = options;
+    await this.ensureReady()
 
-    // 场景1: 在线且云端可用 → 云端查询
-    if (this.isOnline && this.isCloudReady) {
+    const {
+      where = {},
+      orderBy = 'updateTime',
+      order = 'desc',
+      limit = DEFAULT_LIMIT,
+      skip = 0
+    } = options
+
+    if (this.canUseCloud()) {
       try {
-        console.log(`☁️ 云端查询: ${collection}`);
-        
-        const userId = await this.getUserId();
-        let query = this.db.collection(collection).where({ userId, ...where });
-        
-        if (orderBy) {
-          query = query.orderBy(orderBy, order);
+        const userId = await this.getUserId()
+        let query = this.db.collection(collection).where({ userId, ...where })
+
+        if (orderBy) query = query.orderBy(orderBy, order)
+
+        const res = await query.skip(skip).limit(limit).get()
+        const docs = res.data || []
+        this.syncListToLocal(collection, docs)
+        return docs
+      } catch (error) {
+        if (!this.isNetworkError(error) && !this.isMissingCollectionError(error)) {
+          throw new Error(`Cloud list failed: ${error.message || error.errMsg || error}`)
         }
-        
-        const res = await query.skip(skip).limit(limit).get();
-        
-        if (res.data && res.data.length > 0) {
-          console.log(`✅ 云端查询成功: ${res.data.length}条`);
-          // 更新本地缓存
-          this.syncListToLocal(collection, res.data);
-          return res.data;  // 直接返回数组
-        }
-      } catch (cloudError) {
-        console.error('云端查询失败:', cloudError);
-        
-        if (!this.isNetworkError(cloudError) && !this.isMissingCollectionError(cloudError)) {
-          throw new Error(`云端查询失败: ${cloudError.message}`);
-        }
-        console.log('云端暂不可读，使用本地数据');
+        console.warn('Cloud list unavailable, using local cache:', error)
       }
     }
-    
-    // 场景2: 离线 → 本地查询
-    console.log(`📱 本地查询: ${collection}`);
-    const localList = this.listFromLocal(collection, where);
-    return localList;  // 直接返回数组
+
+    return this.listFromLocal(collection, where, { orderBy, order, limit, skip })
   },
 
-  /**
-   * 更新数据 - 云优先
-   * 直接返回更新后的文档（兼容旧代码）
-   */
-  async update(collection, id, data) {
+  async update(collection, id, data = {}) {
+    await this.ensureReady()
+
     const doc = this.filterInvalidFields({
       ...data,
       updateTime: new Date().toISOString(),
       version: (data.version || 0) + 1
-    });
+    })
 
-    if (this.isOnline && this.isCloudReady && id) {
+    if (this.canUseCloud() && id) {
       try {
-        console.log(`☁️ 云端更新: ${collection}/${id}`);
-        
-        const docForUpdate = { ...doc };
-        delete docForUpdate._id;
-        
-        await this.db.collection(collection).doc(id).update({ data: docForUpdate });
-        console.log(`✅ 云端更新成功`);
-        
-        const updatedDoc = { ...doc, _id: id };
-        this.updateLocal(collection, id, updatedDoc);
-        
-        return updatedDoc;
-      } catch (cloudError) {
-        console.error('云端更新失败:', cloudError);
-        
-        if (this.isNetworkError(cloudError)) {
-          console.log('⚠️ 网络错误，降级到本地');
-          const localDoc = this.updateLocal(collection, id, { ...doc, _id: id });
-          this.markPendingSync(collection, id, doc, 'update');
-          return localDoc;
-        } else {
-          throw new Error(`云端更新失败: ${cloudError.message}`);
+        const docForUpdate = { ...doc }
+        delete docForUpdate._id
+        await this.db.collection(collection).doc(id).update({ data: docForUpdate })
+
+        const updatedDoc = this.updateLocal(collection, id, { ...docForUpdate, _id: id }) || { ...docForUpdate, _id: id }
+        return updatedDoc
+      } catch (error) {
+        if (!this.isNetworkError(error)) {
+          throw new Error(`Cloud update failed: ${error.message || error.errMsg || error}`)
         }
+        console.warn('Cloud update unavailable, marking pending:', error)
       }
     }
-    
-    console.log('📴 离线模式，更新本地');
-    const localDoc = this.updateLocal(collection, id, { ...doc, _id: id });
-    this.markPendingSync(collection, id, doc, 'update');
-    return localDoc;
+
+    const localDoc = this.updateLocal(collection, id, { ...doc, _id: id }) || { ...doc, _id: id }
+    this.markPendingSync(collection, id, doc, 'update')
+    return localDoc
   },
 
-  /**
-   * 删除数据 - 云优先
-   * 直接返回 true（兼容旧代码）
-   */
   async remove(collection, id) {
-    // 场景1: 在线且云端可用 → 云端删除
-    if (this.isOnline && this.isCloudReady && id) {
+    await this.ensureReady()
+
+    if (this.canUseCloud() && id) {
       try {
-        console.log(`☁️ 云端删除: ${collection}/${id}`);
-        
-        await this.db.collection(collection).doc(id).remove();
-        console.log(`✅ 云端删除成功`);
-        
-        // 删除本地缓存
-        this.removeFromLocal(collection, id);
-        
-        return true;
-      } catch (cloudError) {
-        console.error('云端删除失败:', cloudError);
-        
-        if (this.isNetworkError(cloudError)) {
-          console.log('⚠️ 网络错误，仅删除本地');
-          this.removeFromLocal(collection, id);
-          this.markPendingSync(collection, id, null, 'remove');
-          return true;
-        } else {
-          throw new Error(`云端删除失败: ${cloudError.message}`);
+        await this.db.collection(collection).doc(id).remove()
+        this.removeFromLocal(collection, id)
+        return true
+      } catch (error) {
+        if (!this.isNetworkError(error)) {
+          throw new Error(`Cloud remove failed: ${error.message || error.errMsg || error}`)
         }
+        console.warn('Cloud remove unavailable, marking pending:', error)
       }
     }
-    
-    // 场景2: 离线 → 本地删除
-    this.removeFromLocal(collection, id);
-    this.markPendingSync(collection, id, null, 'remove');
-    return true;
+
+    this.removeFromLocal(collection, id)
+    this.markPendingSync(collection, id, null, 'remove')
+    return true
   },
 
-  // ==================== 本地存储方法 ====================
+  canUseCloud() {
+    return this.isOnline && this.isCloudReady && this.db
+  },
 
-  saveToLocal(collection, doc) {
-    const key = this.getLocalKey(collection);
-    let list = wx.getStorageSync(key) || [];
-    
-    const index = list.findIndex(item => 
-      (item._id && item._id === doc._id) || 
-      (item.id && doc.id && String(item.id) === String(doc.id))
-    );
-    
-    if (index > -1) {
-      list[index] = doc;
-    } else {
-      list.unshift(doc);
-    }
-    
-    wx.setStorageSync(key, list);
+  saveToLocalFallback(collection, doc) {
+    const savedDoc = this.saveToLocal(collection, doc)
+    this.markPendingSync(collection, savedDoc._id || savedDoc.id, savedDoc, 'save')
+    return savedDoc
+  },
+
+  saveToLocal(collection, doc = {}) {
+    const id = this.getDocumentId(doc) || this.generateLocalId(collection)
+    const savedDoc = { ...doc }
+    if (!savedDoc.id && !savedDoc._id) savedDoc.id = id
+
+    wx.setStorageSync(this.getLocalDocKey(collection, id), savedDoc)
+    this.upsertLocalIndex(collection, savedDoc, id)
+    return savedDoc
   },
 
   getFromLocal(collection, id) {
-    const key = this.getLocalKey(collection);
-    const list = wx.getStorageSync(key) || [];
-    return list.find(item => 
-      (item._id && item._id === id) || 
-      (item.id && String(item.id) === String(id))
-    );
+    if (!id) return null
+    this.migrateLegacyCollection(collection)
+
+    const doc = wx.getStorageSync(this.getLocalDocKey(collection, id))
+    if (doc) return doc
+
+    const index = this.getLocalIndex(collection)
+    for (const entry of index) {
+      const item = wx.getStorageSync(this.getLocalDocKey(collection, entry.id))
+      if (!item) continue
+      if (sameId(item._id, id) || sameId(item.id, id)) return item
+    }
+
+    return null
   },
 
-  listFromLocal(collection, where = {}) {
-    const key = this.getLocalKey(collection);
-    let list = wx.getStorageSync(key) || [];
-    
-    if (Object.keys(where).length > 0) {
-      list = list.filter(item => {
-        return Object.keys(where).every(k => {
-          if (k === 'userId') return true;
-          return item[k] === where[k];
-        });
-      });
+  listFromLocal(collection, where = {}, options = {}) {
+    this.migrateLegacyCollection(collection)
+
+    const limit = Number(options.limit || DEFAULT_LIMIT)
+    const skip = Number(options.skip || 0)
+    const order = options.order || 'desc'
+    const index = this.getLocalIndex(collection)
+      .slice()
+      .sort((a, b) => compareIndexEntries(a, b, order))
+
+    const docs = []
+    let matchedCount = 0
+
+    for (const entry of index) {
+      const doc = wx.getStorageSync(this.getLocalDocKey(collection, entry.id))
+      if (!doc || !this.matchesWhere(doc, where)) continue
+
+      if (matchedCount >= skip && docs.length < limit) {
+        docs.push(doc)
+      }
+
+      matchedCount++
+      if (docs.length >= limit) break
     }
-    
-    return list;
+
+    return docs
   },
 
-  updateLocal(collection, id, doc) {
-    const key = this.getLocalKey(collection);
-    let list = wx.getStorageSync(key) || [];
-    const index = list.findIndex(item => 
-      (item._id && item._id === id) || 
-      (item.id && item.id === id)
-    );
-    
-    if (index > -1) {
-      list[index] = { ...list[index], ...doc };
-      wx.setStorageSync(key, list);
-      return list[index];
+  updateLocal(collection, id, doc = {}) {
+    const existing = this.getFromLocal(collection, id) || {}
+    const merged = {
+      ...existing,
+      ...doc
     }
-    return null;
+
+    if (!merged.id && !merged._id) {
+      merged.id = id || this.generateLocalId(collection)
+    }
+
+    return this.saveToLocal(collection, merged)
   },
 
   removeFromLocal(collection, id) {
-    const key = this.getLocalKey(collection);
-    let list = wx.getStorageSync(key) || [];
-    list = list.filter(item => {
-      const itemId = item._id || item.id;
-      return String(itemId || '') !== String(id || '');
-    });
-    wx.setStorageSync(key, list);
+    if (!id) return
+    this.migrateLegacyCollection(collection)
+
+    const index = this.getLocalIndex(collection)
+    const nextIndex = []
+
+    index.forEach(entry => {
+      const doc = wx.getStorageSync(this.getLocalDocKey(collection, entry.id))
+      const shouldRemove = sameId(entry.id, id) || sameId(doc && doc._id, id) || sameId(doc && doc.id, id)
+
+      if (shouldRemove) {
+        wx.removeStorageSync(this.getLocalDocKey(collection, entry.id))
+      } else {
+        nextIndex.push(entry)
+      }
+    })
+
+    this.setLocalIndex(collection, nextIndex)
   },
 
-  syncListToLocal(collection, docs) {
-    const key = this.getLocalKey(collection);
-    const localMap = new Map();
-    const existingList = wx.getStorageSync(key) || [];
-    
-    existingList.forEach(item => {
-      const id = item._id || item.id;
-      localMap.set(id, item);
-    });
-    
-    docs.forEach(doc => {
-      const id = doc._id || doc.id;
-      localMap.set(id, doc);
-    });
-    
-    const mergedList = Array.from(localMap.values()).sort((a, b) => {
-      return new Date(b.updateTime) - new Date(a.updateTime);
-    });
-    
-    wx.setStorageSync(key, mergedList);
+  syncListToLocal(collection, docs = []) {
+    docs.forEach(doc => this.saveToLocal(collection, doc))
   },
 
-  getLocalKey(collection) {
+  upsertLocalIndex(collection, doc, id) {
+    const index = this.getLocalIndex(collection)
+    const timestamp = doc.updateTime || doc.createTime || new Date().toISOString()
+    const nextEntry = {
+      id,
+      updateTime: timestamp,
+      createTime: doc.createTime || timestamp
+    }
+
+    const nextIndex = [nextEntry].concat(index.filter(entry => !sameId(entry.id, id)))
+    this.setLocalIndex(collection, nextIndex)
+  },
+
+  getLocalIndex(collection) {
+    this.migrateLegacyCollection(collection)
+    const index = wx.getStorageSync(this.getLocalIndexKey(collection))
+    return Array.isArray(index) ? index : []
+  },
+
+  setLocalIndex(collection, index) {
+    wx.setStorageSync(this.getLocalIndexKey(collection), index)
+  },
+
+  migrateLegacyCollection(collection) {
+    const indexKey = this.getLocalIndexKey(collection)
+    const existingIndex = wx.getStorageSync(indexKey)
+    if (Array.isArray(existingIndex)) return
+
+    const legacyKey = this.getLegacyLocalKey(collection)
+    const legacyList = wx.getStorageSync(legacyKey)
+    if (!Array.isArray(legacyList) || legacyList.length === 0) {
+      wx.setStorageSync(indexKey, [])
+      return
+    }
+
+    const index = []
+    legacyList.forEach(item => {
+      const id = this.getDocumentId(item) || this.generateLocalId(collection)
+      const doc = { ...item }
+      if (!doc.id && !doc._id) doc.id = id
+      wx.setStorageSync(this.getLocalDocKey(collection, id), doc)
+      index.push({
+        id,
+        updateTime: doc.updateTime || doc.createTime || new Date().toISOString(),
+        createTime: doc.createTime || doc.updateTime || new Date().toISOString()
+      })
+    })
+
+    this.setLocalIndex(collection, index)
+    wx.removeStorageSync(legacyKey)
+  },
+
+  getLocalIndexKey(collection) {
+    return `localIndex:${collection}`
+  },
+
+  getLocalDocKey(collection, id) {
+    return `localDoc:${collection}:${id}`
+  },
+
+  getLegacyLocalKey(collection) {
     const keyMap = {
-      'courses': 'courses',
-      'notes': 'notes',
-      'mistakes': 'mistakes',
-      'flashcards': 'flashcards',
-      'exams': 'exams'
-    };
-    return keyMap[collection] || collection;
+      courses: 'courses',
+      notes: 'notes',
+      mistakes: 'mistakes',
+      flashcards: 'flashcards',
+      exams: 'exams'
+    }
+    return keyMap[collection] || collection
   },
 
-  // ==================== 辅助方法 ====================
+  getDocumentId(doc = {}) {
+    return doc._id || doc.id || ''
+  },
 
-  saveToLocalFallback(collection, doc) {
-    this.saveToLocal(collection, doc);
-    this.markPendingSync(collection, doc._id || doc.id, doc, 'save');
-    return doc;  // 直接返回文档
+  generateLocalId(collection) {
+    return `${collection}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  },
+
+  matchesWhere(doc = {}, where = {}) {
+    return Object.keys(where || {}).every(key => {
+      if (key === 'userId') return true
+      return sameId(doc[key], where[key])
+    })
   },
 
   markPendingSync(collection, id, data, action) {
-    const pendingSync = wx.getStorageSync('pendingSync') || [];
+    const pendingSync = wx.getStorageSync('pendingSync') || []
     pendingSync.push({
       collection,
-      id: id,
-      data: data,
-      action: action,
+      id,
+      data,
+      action,
       timestamp: Date.now()
-    });
-    wx.setStorageSync('pendingSync', pendingSync);
-    console.log(`📝 已标记待同步: ${action}`);
-  },
-
-  /**
-   * add 是 save 的别名（兼容旧代码）
-   */
-  async add(collection, data) {
-    return await this.save(collection, data);
-  },
-
-  filterInvalidFields(data) {
-    const reservedFields = ['_id', '_openid', '_createTime', '_updateTime'];
-    const filtered = { ...data };
-    
-    for (const field of reservedFields) {
-      if (field !== '_id' && filtered.hasOwnProperty(field)) {
-        console.log(`⚠️ 移除保留字段: ${field}`);
-        delete filtered[field];
-      }
-    }
-    
-    return filtered;
-  },
-
-  isNetworkError(error) {
-    if (!error) return false;
-    
-    const errorMsg = error.errMsg || error.message || '';
-    const networkKeywords = [
-      'network',
-      'timeout',
-      'request:fail',
-      '网络',
-      '超时'
-    ];
-    
-    return networkKeywords.some(keyword => 
-      errorMsg.toLowerCase().includes(keyword.toLowerCase())
-    );
-  },
-
-  isMissingCollectionError(error) {
-    const errorMsg = (error && (error.errMsg || error.message || String(error))) || '';
-    return errorMsg.includes('collection not exists') ||
-      errorMsg.includes('DATABASE_COLLECTION_NOT_EXIST') ||
-      errorMsg.includes('Db or Table not exist') ||
-      errorMsg.includes('ResourceNotFound');
-  },
-
-  async getUserId() {
-    let openId = wx.getStorageSync('openId');
-    
-    if (!openId && this.isCloudReady) {
-      try {
-        const res = await wx.cloud.callFunction({ name: 'getOpenId' });
-        openId = res.result.openid;
-        wx.setStorageSync('openId', openId);
-      } catch (error) {
-        console.warn('获取用户ID失败:', error);
-        openId = 'local_user_' + Date.now();
-        wx.setStorageSync('openId', openId);
-      }
-    } else if (!openId) {
-      openId = 'local_user_' + Date.now();
-      wx.setStorageSync('openId', openId);
-    }
-    
-    return openId;
+    })
+    wx.setStorageSync('pendingSync', pendingSync)
   },
 
   async syncPendingData() {
-    const pendingSync = wx.getStorageSync('pendingSync') || [];
-    if (pendingSync.length === 0) {
-      console.log('没有待同步数据');
-      return;
+    await this.ensureReady()
+
+    const pendingSync = wx.getStorageSync('pendingSync') || []
+    if (pendingSync.length === 0) return
+    if (!this.canUseCloud()) return
+
+    try {
+      await this.getUserId()
+    } catch (error) {
+      console.warn('Skip pending sync until identity is initialized:', error)
+      return
     }
 
-    if (!this.isOnline || !this.isCloudReady) {
-      console.log('离线或云端不可用，跳过同步');
-      return;
-    }
+    wx.showLoading({ title: '同步中...', mask: true })
 
-    console.log(`🔄 开始同步 ${pendingSync.length} 条待同步数据`);
-    wx.showLoading({ title: '同步中...', mask: true });
+    const failedItems = []
+    let successCount = 0
 
-    const failedItems = [];
-    let successCount = 0;
-
-    for (const item of pendingSync) {
+    await runWithConcurrency(pendingSync, SYNC_CONCURRENCY, async item => {
       try {
-        if (item.action === 'save') {
-          await this.db.collection(item.collection).add({ data: item.data });
-          successCount++;
-        } else if (item.action === 'update') {
-          await this.db.collection(item.collection).doc(item.id).update({ data: item.data });
-          successCount++;
-        }
+        await this.syncOnePendingItem(item)
+        successCount++
       } catch (error) {
-        console.error('同步失败:', error);
-        failedItems.push(item);
+        console.error('Pending sync failed:', error)
+        failedItems.push(item)
       }
-    }
+    })
 
-    wx.hideLoading();
+    wx.hideLoading()
+    wx.setStorageSync('pendingSync', failedItems)
 
     if (successCount > 0) {
       wx.showToast({
-        title: `成功同步 ${successCount} 条`,
+        title: `已同步 ${successCount} 条`,
         icon: 'success'
-      });
+      })
+    }
+  },
+
+  async syncOnePendingItem(item) {
+    if (item.action === 'remove') {
+      await this.db.collection(item.collection).doc(item.id).remove()
+      return
     }
 
-    // 保存失败的项目
-    wx.setStorageSync('pendingSync', failedItems);
-    console.log(`同步完成: 成功${successCount}条，失败${failedItems.length}条`);
+    const data = this.filterInvalidFields({ ...(item.data || {}) })
+    delete data._id
+
+    if (item.action === 'update') {
+      await this.db.collection(item.collection).doc(item.id).update({ data })
+      return
+    }
+
+    if (item.action === 'save') {
+      if (item.data && item.data._id) {
+        await this.db.collection(item.collection).doc(item.data._id).set({ data })
+        return
+      }
+
+      const result = await this.db.collection(item.collection).add({ data })
+      if (result && result._id && item.data) {
+        this.updateLocal(item.collection, item.id, { ...item.data, _id: result._id })
+      }
+    }
+  },
+
+  filterInvalidFields(data = {}) {
+    const filtered = { ...data }
+    ;['_openid', '_createTime', '_updateTime'].forEach(field => {
+      delete filtered[field]
+    })
+    return filtered
+  },
+
+  isNetworkError(error) {
+    if (!error) return false
+
+    const errorMsg = String(error.errMsg || error.message || error).toLowerCase()
+    return ['network', 'timeout', 'request:fail', 'fail interrupted', '网络', '超时'].some(keyword => {
+      return errorMsg.includes(keyword.toLowerCase())
+    })
+  },
+
+  isMissingCollectionError(error) {
+    const errorMsg = String(error && (error.errMsg || error.message || error))
+    return errorMsg.includes('collection not exists') ||
+      errorMsg.includes('DATABASE_COLLECTION_NOT_EXIST') ||
+      errorMsg.includes('Db or Table not exist') ||
+      errorMsg.includes('ResourceNotFound')
+  },
+
+  async getUserId() {
+    const cachedOpenId = wx.getStorageSync('openId')
+    if (cachedOpenId) return cachedOpenId
+
+    if (!this.canUseCloud()) {
+      throw new Error('首次使用需要联网完成身份初始化')
+    }
+
+    try {
+      const res = await wx.cloud.callFunction({ name: 'getOpenId' })
+      const openId = res && res.result && res.result.openid
+      if (!openId) throw new Error('OpenId is empty')
+      wx.setStorageSync('openId', openId)
+      return openId
+    } catch (error) {
+      throw new Error(`身份初始化失败：${error.message || error.errMsg || error}`)
+    }
   },
 
   async getStorageStats() {
+    await this.ensureReady()
+
     const stats = {
       cloud: {
         enabled: this.isCloudReady,
@@ -523,46 +555,68 @@ const CloudFirstStorage = {
         mistakes: 0
       },
       local: {
-        courses: 0,
-        notes: 0,
-        mistakes: 0,
+        courses: this.getLocalIndex('courses').length,
+        notes: this.getLocalIndex('notes').length,
+        mistakes: this.getLocalIndex('mistakes').length,
         currentSize: 0,
         limitSize: 10240
       },
       pendingSync: (wx.getStorageSync('pendingSync') || []).length
-    };
+    }
 
-    // 云端统计
-    if (this.isCloudReady && this.isOnline) {
+    if (this.canUseCloud()) {
       try {
-        const userId = await this.getUserId();
-        
-        for (const col of ['courses', 'notes', 'mistakes']) {
-          const countRes = await this.db.collection(col).where({ userId }).count();
-          stats.cloud[col] = countRes.total;
+        const userId = await this.getUserId()
+        for (const collection of ['courses', 'notes', 'mistakes']) {
+          const countRes = await this.db.collection(collection).where({ userId }).count()
+          stats.cloud[collection] = countRes.total
         }
       } catch (error) {
-        console.error('获取云端统计失败:', error);
+        console.warn('Failed to read cloud storage stats:', error)
       }
     }
 
-    // 本地统计
-    for (const col of ['courses', 'notes', 'mistakes']) {
-      const list = wx.getStorageSync(col) || [];
-      stats.local[col] = list.length;
-    }
-
-    // 存储空间
     try {
-      const storageInfo = await wx.getStorageInfo();
-      stats.local.currentSize = storageInfo.currentSize;
-      stats.local.limitSize = storageInfo.limitSize;
+      const storageInfo = await wx.getStorageInfo()
+      stats.local.currentSize = storageInfo.currentSize
+      stats.local.limitSize = storageInfo.limitSize
     } catch (error) {
-      console.error('获取存储信息失败:', error);
+      console.warn('Failed to read local storage stats:', error)
     }
 
-    return stats;
+    return stats
   }
-};
+}
 
-module.exports = CloudFirstStorage;
+function sameId(a, b) {
+  return String(a || '') === String(b || '')
+}
+
+function compareIndexEntries(a, b, order) {
+  const left = new Date(a.updateTime || a.createTime || 0).getTime()
+  const right = new Date(b.updateTime || b.createTime || 0).getTime()
+  return order === 'asc' ? left - right : right - left
+}
+
+async function runWithConcurrency(items, limit, worker) {
+  const executing = []
+
+  for (const item of items) {
+    const task = Promise.resolve().then(() => worker(item))
+    executing.push(task)
+
+    const clean = () => {
+      const index = executing.indexOf(task)
+      if (index > -1) executing.splice(index, 1)
+    }
+    task.then(clean).catch(clean)
+
+    if (executing.length >= limit) {
+      await Promise.race(executing)
+    }
+  }
+
+  await Promise.all(executing)
+}
+
+module.exports = CloudFirstStorage

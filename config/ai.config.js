@@ -1,87 +1,46 @@
-/**
- * 内部 AI 配置文件
- * - develop/trial 可放测试配置
- * - release 必须使用生产配置
- * 发布前只需要改这里
- */
-
-const developConfig = {
-  provider: 'coze',
-  providers: {
-    coze: {
-      baseUrl: 'https://api.coze.cn/v1',
-      apiKey: '',
-      bots: {
-        noteSummary: '',
-        qaAssistant: '',
-        examGenerator: '',
-        flashcardGen: '',
-        ocrVision: '',
-        audioTranscribe: ''
-      }
-    },
-    xfyun: {
-      appId: '',
-      apiKey: '',
-      apiSecret: '',
-      baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
-    },
-    openai: {
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
-      model: 'gpt-4o-mini'
-    },
-    compatible: {
-      baseUrl: '',
-      apiKey: '',
-      model: ''
-    }
-  }
-};
-
-const releaseConfig = {
-  provider: 'coze',
-  providers: {
-    coze: {
-      baseUrl: 'https://api.coze.cn/v1',
-      apiKey: '',
-      bots: {
-        noteSummary: '',
-        qaAssistant: '',
-        examGenerator: '',
-        flashcardGen: '',
-        ocrVision: '',
-        audioTranscribe: ''
-      }
-    },
-    xfyun: {
-      appId: '',
-      apiKey: '',
-      apiSecret: '',
-      baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
-    },
-    openai: {
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
-      model: 'gpt-4o-mini'
-    },
-    compatible: {
-      baseUrl: '',
-      apiKey: '',
-      model: ''
-    }
-  }
-};
-
-function deepClone(obj) {
-  return JSON.parse(JSON.stringify(obj));
+const defaultBots = {
+  noteSummary: '7626369066156163126',
+  qaAssistant: '7626370009735921664',
+  examGenerator: '7626370288783130667',
+  flashcardGen: '7626370444853608458',
+  ocrVision: '7631191918264729663',
+  audioTranscribe: ''
 }
 
-function getAIConfigByEnv(envVersion) {
-  if (envVersion === 'release') return deepClone(releaseConfig);
-  return deepClone(developConfig);
+const baseConfig = {
+  provider: 'cloud',
+  providers: {
+    cloud: {
+      functionName: 'aiRouter',
+      lightEngine: 'hunyuan',
+      heavyEngine: 'coze'
+    },
+    hunyuan: {
+      model: 'hunyuan-turbos-latest'
+    },
+    coze: {
+      baseUrl: 'cloud://aiRouter',
+      apiKey: '',
+      bots: defaultBots
+    },
+    xfyun: {
+      baseUrl: 'cloud://aiRouter',
+      appId: '',
+      apiKey: '',
+      apiSecret: ''
+    }
+  }
+}
+
+function deepClone(obj) {
+  return JSON.parse(JSON.stringify(obj))
+}
+
+function getAIConfigByEnv() {
+  return deepClone(baseConfig)
 }
 
 module.exports = {
-  getAIConfigByEnv
-};
+  getAIConfigByEnv,
+  defaultBots
+}
