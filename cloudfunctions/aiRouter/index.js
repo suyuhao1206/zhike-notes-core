@@ -263,7 +263,7 @@ async function callHunyuanJson(messages, options = {}) {
     })
 
     try {
-      return JSON.parse(String(lastText || '').trim())
+      return parseJsonPayload(lastText)
     } catch (error) {
       nextMessages = messages.concat([
         {
@@ -333,7 +333,7 @@ async function callCozeJson(botType, prompt, options = {}, wxContext = {}) {
     })
 
     try {
-      return JSON.parse(String(lastText || '').trim())
+      return parseJsonPayload(lastText)
     } catch (error) {
       nextPrompt = [
         prompt,
@@ -345,6 +345,18 @@ async function callCozeJson(botType, prompt, options = {}, wxContext = {}) {
   }
 
   throw new Error('Coze returned invalid JSON after retries')
+}
+
+function parseJsonPayload(text) {
+  return JSON.parse(stripMarkdownJsonFence(text))
+}
+
+function stripMarkdownJsonFence(text) {
+  return String(text || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
 }
 
 async function callCozeText(botType, content, options = {}) {
