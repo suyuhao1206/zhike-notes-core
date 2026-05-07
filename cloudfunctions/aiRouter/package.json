@@ -1,9 +1,0 @@
-{
-  "name": "aiRouter",
-  "version": "1.0.0",
-  "description": "Cloud AI router for Hunyuan, Coze, and ASR providers",
-  "main": "index.js",
-  "dependencies": {
-    "wx-server-sdk": "latest"
-  }
-}

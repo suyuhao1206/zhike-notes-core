@@ -27,7 +27,7 @@ class SmartStorage {
 
       if (typeof wx !== 'undefined' && wx.cloud) {
         await wx.cloud.init({
-          env: 'cloud1-6gegqlssbeb8ee83',
+          env: 'REDACTED_CLOUD_ENV',
           traceUser: true
         });
         this.db = wx.cloud.database();
