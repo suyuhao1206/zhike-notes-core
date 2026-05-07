@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "openapi": []
-  },
-  "triggers": [],
-  "timeout": 60
-}

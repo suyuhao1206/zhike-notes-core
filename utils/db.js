@@ -1,18 +1,12 @@
 const CLOUD_ENV = 'cloud1-6gegqlssbeb8ee83'
 const DEFAULT_LIMIT = 100
 const SYNC_CONCURRENCY = 5
-const STORAGE_PRUNE_THRESHOLD_KB = 8000
-const STORAGE_PRUNE_TARGET_KB = 7000
-const LOCAL_DOC_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
-const LOCAL_CACHE_COLLECTIONS = ['courses', 'notes', 'mistakes', 'flashcards', 'exams']
 
 const CloudFirstStorage = {
   isCloudReady: false,
   db: null,
   isOnline: true,
   initPromise: null,
-  isSyncing: false,
-  lastPruneCheckAt: 0,
 
   async init() {
     if (this.initPromise) return this.initPromise
@@ -251,17 +245,7 @@ const CloudFirstStorage = {
     const savedDoc = { ...doc }
     if (!savedDoc.id && !savedDoc._id) savedDoc.id = id
 
-    const docKey = this.getLocalDocKey(collection, id)
-    this.pruneLocalCacheIfNeeded()
-
-    try {
-      wx.setStorageSync(docKey, savedDoc)
-    } catch (error) {
-      console.warn('Local storage write failed, pruning stale cache before retry:', error)
-      this.pruneLocalCacheIfNeeded({ force: true })
-      wx.setStorageSync(docKey, savedDoc)
-    }
-
+    wx.setStorageSync(this.getLocalDocKey(collection, id), savedDoc)
     this.upsertLocalIndex(collection, savedDoc, id)
     return savedDoc
   },
@@ -449,55 +433,42 @@ const CloudFirstStorage = {
   },
 
   async syncPendingData() {
-    if (this.isSyncing) return
+    await this.ensureReady()
 
-    this.isSyncing = true
-    let loadingShown = false
+    const pendingSync = wx.getStorageSync('pendingSync') || []
+    if (pendingSync.length === 0) return
+    if (!this.canUseCloud()) return
 
     try {
-      await this.ensureReady()
+      await this.getUserId()
+    } catch (error) {
+      console.warn('Skip pending sync until identity is initialized:', error)
+      return
+    }
 
-      const pendingSync = wx.getStorageSync('pendingSync') || []
-      if (pendingSync.length === 0) return
-      if (!this.canUseCloud()) return
-      const syncingKeys = new Set(pendingSync.map(item => getPendingItemKey(item)))
+    wx.showLoading({ title: '同步中...', mask: true })
 
+    const failedItems = []
+    let successCount = 0
+
+    await runWithConcurrency(pendingSync, SYNC_CONCURRENCY, async item => {
       try {
-        await this.getUserId()
+        await this.syncOnePendingItem(item)
+        successCount++
       } catch (error) {
-        console.warn('Skip pending sync until identity is initialized:', error)
-        return
+        console.error('Pending sync failed:', error)
+        failedItems.push(item)
       }
+    })
 
-      wx.showLoading({ title: '同步中...', mask: true })
-      loadingShown = true
+    wx.hideLoading()
+    wx.setStorageSync('pendingSync', failedItems)
 
-      const failedItems = []
-      let successCount = 0
-
-      await runWithConcurrency(pendingSync, SYNC_CONCURRENCY, async item => {
-        try {
-          await this.syncOnePendingItem(item)
-          successCount++
-        } catch (error) {
-          console.error('Pending sync failed:', error)
-          failedItems.push(item)
-        }
+    if (successCount > 0) {
+      wx.showToast({
+        title: `已同步 ${successCount} 条`,
+        icon: 'success'
       })
-
-      const latestPendingSync = wx.getStorageSync('pendingSync') || []
-      const newItems = latestPendingSync.filter(item => !syncingKeys.has(getPendingItemKey(item)))
-      wx.setStorageSync('pendingSync', failedItems.concat(newItems))
-
-      if (successCount > 0) {
-        wx.showToast({
-          title: `已同步 ${successCount} 条`,
-          icon: 'success'
-        })
-      }
-    } finally {
-      if (loadingShown) wx.hideLoading()
-      this.isSyncing = false
     }
   },
 
@@ -609,163 +580,16 @@ const CloudFirstStorage = {
       const storageInfo = await wx.getStorageInfo()
       stats.local.currentSize = storageInfo.currentSize
       stats.local.limitSize = storageInfo.limitSize
-
-      const cleanup = this.pruneLocalCacheIfNeeded({
-        force: true,
-        currentSize: storageInfo.currentSize,
-        limitSize: storageInfo.limitSize
-      })
-
-      if (cleanup.removed > 0) {
-        const refreshedStorageInfo = await wx.getStorageInfo()
-        stats.local.currentSize = refreshedStorageInfo.currentSize
-        stats.local.limitSize = refreshedStorageInfo.limitSize
-        stats.local.courses = this.getLocalIndex('courses').length
-        stats.local.notes = this.getLocalIndex('notes').length
-        stats.local.mistakes = this.getLocalIndex('mistakes').length
-      }
     } catch (error) {
       console.warn('Failed to read local storage stats:', error)
     }
 
     return stats
-  },
-
-  pruneLocalCacheIfNeeded(options = {}) {
-    const now = Date.now()
-    if (!options.force && now - this.lastPruneCheckAt < 60 * 1000) {
-      return { removed: 0 }
-    }
-
-    this.lastPruneCheckAt = now
-
-    let currentSize = Number(options.currentSize || 0)
-    let limitSize = Number(options.limitSize || 10240)
-
-    if (!currentSize && wx.getStorageInfoSync) {
-      try {
-        const storageInfo = wx.getStorageInfoSync()
-        currentSize = storageInfo.currentSize
-        limitSize = storageInfo.limitSize || limitSize
-      } catch (error) {
-        console.warn('Failed to read sync storage stats:', error)
-        return { removed: 0 }
-      }
-    }
-
-    if (currentSize <= STORAGE_PRUNE_THRESHOLD_KB) {
-      return { removed: 0, currentSize, limitSize }
-    }
-
-    const cutoff = now - LOCAL_DOC_RETENTION_MS
-    const pendingRefs = this.getPendingLocalRefs()
-    const candidates = []
-
-    LOCAL_CACHE_COLLECTIONS.forEach(collection => {
-      const index = this.getLocalIndex(collection)
-
-      index.forEach(entry => {
-        const key = this.getLocalDocKey(collection, entry.id)
-        const doc = wx.getStorageSync(key)
-        if (!doc || !this.hasCloudBackup(doc)) return
-        if (this.hasPendingLocalChange(pendingRefs, collection, entry, doc)) return
-
-        const updatedAt = parseTime(entry.updateTime || doc.updateTime || doc.createTime)
-        if (!updatedAt || updatedAt > cutoff) return
-
-        candidates.push({
-          collection,
-          entryId: entry.id,
-          key,
-          updatedAt,
-          estimatedSize: estimateStorageSizeKb(key, doc)
-        })
-      })
-    })
-
-    candidates.sort((a, b) => a.updatedAt - b.updatedAt)
-
-    const removedByCollection = {}
-    let removed = 0
-    let estimatedSize = currentSize
-
-    candidates.forEach(candidate => {
-      if (estimatedSize <= STORAGE_PRUNE_TARGET_KB) return
-
-      wx.removeStorageSync(candidate.key)
-      if (!removedByCollection[candidate.collection]) {
-        removedByCollection[candidate.collection] = new Set()
-      }
-      removedByCollection[candidate.collection].add(String(candidate.entryId))
-      estimatedSize -= candidate.estimatedSize
-      removed++
-    })
-
-    Object.keys(removedByCollection).forEach(collection => {
-      const removedIds = removedByCollection[collection]
-      const nextIndex = this.getLocalIndex(collection).filter(entry => !removedIds.has(String(entry.id)))
-      this.setLocalIndex(collection, nextIndex)
-    })
-
-    if (removed > 0) {
-      console.info(`Pruned ${removed} stale local cache documents`)
-    }
-
-    return { removed, currentSize, limitSize }
-  },
-
-  hasCloudBackup(doc = {}) {
-    return !!doc._id
-  },
-
-  getPendingLocalRefs() {
-    const pendingSync = wx.getStorageSync('pendingSync') || []
-    const refs = {}
-
-    pendingSync.forEach(item => {
-      if (!item || !item.collection) return
-      if (!refs[item.collection]) refs[item.collection] = new Set()
-
-      ;[item.id, item.data && item.data.id, item.data && item.data._id].forEach(id => {
-        if (id) refs[item.collection].add(String(id))
-      })
-    })
-
-    return refs
-  },
-
-  hasPendingLocalChange(pendingRefs, collection, entry = {}, doc = {}) {
-    const refs = pendingRefs[collection]
-    if (!refs) return false
-
-    return [entry.id, doc.id, doc._id].some(id => id && refs.has(String(id)))
   }
 }
 
 function sameId(a, b) {
   return String(a || '') === String(b || '')
-}
-
-function parseTime(value) {
-  const timestamp = new Date(value || 0).getTime()
-  return Number.isFinite(timestamp) ? timestamp : 0
-}
-
-function estimateStorageSizeKb(key, value) {
-  try {
-    return Math.max(1, Math.ceil((String(key).length + JSON.stringify(value).length) / 1024))
-  } catch (error) {
-    return 1
-  }
-}
-
-function getPendingItemKey(item = {}) {
-  return [
-    item.collection || '',
-    item.id || '',
-    item.action || '',
-    item.timestamp || ''
-  ].join(':')
 }
 
 function compareIndexEntries(a, b, order) {
