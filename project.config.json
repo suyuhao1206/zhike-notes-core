@@ -1,6 +1,9 @@
 {
-  "description": "智课笔记小程序",
+  "description": "\u667a\u8bfe\u7b14\u8bb0\u5c0f\u7a0b\u5e8f",
   "cloudfunctionRoot": "cloudfunctions/",
+  "cloudbaseRoot": "cloudfunctions/",
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/",
+  "cloud": true,
   "packOptions": {
     "ignore": [
       {
@@ -59,10 +62,9 @@
   },
   "compileType": "miniprogram",
   "libVersion": "3.15.0",
-  "appid": "REDACTED_APPID",
-  "projectname": "智课笔记",
+  "appid": "wxcd01001c3c125b2b",
+  "projectname": "\u667a\u8bfe\u7b14\u8bb0",
   "condition": {},
   "simulatorPluginLibVersion": {},
-  "editorSetting": {},
-  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
+  "editorSetting": {}
 }

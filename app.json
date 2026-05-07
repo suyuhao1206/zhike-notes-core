@@ -22,7 +22,7 @@
   "window": {
     "backgroundTextStyle": "light",
     "navigationBarBackgroundColor": "#1890FF",
-    "navigationBarTitleText": "智课笔记",
+    "navigationBarTitleText": "\u667a\u8bfe\u7b14\u8bb0",
     "navigationBarTextStyle": "white"
   },
   "tabBar": {
@@ -32,25 +32,25 @@
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "首页",
+        "text": "\u9996\u9875",
         "iconPath": "images/home.png",
         "selectedIconPath": "images/home-active.png"
       },
       {
         "pagePath": "pages/record/record",
-        "text": "录音",
+        "text": "\u5f55\u97f3",
         "iconPath": "images/mic.png",
         "selectedIconPath": "images/mic-active.png"
       },
       {
         "pagePath": "pages/review/review",
-        "text": "复习",
+        "text": "\u590d\u4e60",
         "iconPath": "images/review.png",
         "selectedIconPath": "images/review-active.png"
       },
       {
         "pagePath": "pages/profile/profile",
-        "text": "我的",
+        "text": "\u6211\u7684",
         "iconPath": "images/profile.png",
         "selectedIconPath": "images/profile-active.png"
       }
@@ -58,10 +58,17 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
+  "permission": {
+    "scope.record": {
+      "desc": "\u7528\u4e8e\u8bfe\u5802\u5f55\u97f3\u5e76\u751f\u6210\u5b66\u4e60\u7b14\u8bb0"
+    }
+  },
   "requiredPrivateInfos": [
     "chooseAddress",
     "chooseLocation"
   ],
-  "requiredBackgroundModes": ["audio"],
+  "requiredBackgroundModes": [
+    "audio"
+  ],
   "lazyCodeLoading": "requiredComponents"
 }
