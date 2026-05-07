@@ -1,0 +1,105 @@
+<!--pages/flashcard/flashcard.wxml-->
+<view class="container">
+  <!-- 页面标题 -->
+  <view class="header">
+    <text class="title">背诵卡片</text>
+    <text class="subtitle">{{currentIndex + 1}} / {{flashcards.length}}</text>
+  </view>
+
+  <!-- 卡片区域 -->
+  <view class="card-container" wx:if="{{flashcards.length > 0}}">
+    <view class="flashcard {{isFlipped ? 'flipped' : ''}}" bindtap="flipCard">
+      <!-- 卡片正面 -->
+      <view class="card-face card-front">
+        <view class="card-content">
+          <text class="card-label">问题</text>
+          <text class="card-text">{{currentCard.question}}</text>
+        </view>
+        <view class="card-hint">点击翻转查看答案</view>
+      </view>
+      
+      <!-- 卡片背面 -->
+      <view class="card-face card-back">
+        <view class="card-content">
+          <text class="card-label">答案</text>
+          <text class="card-text">{{currentCard.answer}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view class="empty-state" wx:if="{{flashcards.length === 0 && !loading}}">
+    <text class="empty-icon">📝</text>
+    <text class="empty-text">暂无背诵卡片</text>
+    <text class="empty-subtext">从笔记生成卡片开始背诵吧</text>
+    <button class="btn-primary" bindtap="goToNotes">去生成卡片</button>
+  </view>
+
+  <!-- 控制按钮 -->
+  <view class="controls" wx:if="{{flashcards.length > 0}}">
+    <view class="progress-bar">
+      <view class="progress-fill" style="width: {{progressPercent}}%"></view>
+    </view>
+    
+    <view class="btn-group" wx:if="{{isFlipped}}">
+      <button class="btn-difficult" bindtap="markDifficult">
+        <text class="btn-icon">😰</text>
+        <text>困难</text>
+      </button>
+      <button class="btn-uncertain" bindtap="markUncertain">
+        <text class="btn-icon">🤔</text>
+        <text>模糊</text>
+      </button>
+      <button class="btn-mastered" bindtap="markMastered">
+        <text class="btn-icon">😊</text>
+        <text>掌握</text>
+      </button>
+    </view>
+    
+    <view class="nav-btns">
+      <button class="btn-nav" bindtap="prevCard" disabled="{{currentIndex === 0}}">
+        <text class="nav-icon">‹</text>
+      </button>
+      <button class="btn-nav btn-shuffle" bindtap="shuffleCards">
+        <text class="nav-icon">🔀</text>
+      </button>
+      <button class="btn-nav" bindtap="nextCard" disabled="{{currentIndex === flashcards.length - 1}}">
+        <text class="nav-icon">›</text>
+      </button>
+    </view>
+  </view>
+
+  <!-- 完成弹窗 -->
+  <view class="modal" wx:if="{{showCompleteModal}}">
+    <view class="modal-mask" bindtap="closeModal"></view>
+    <view class="modal-content">
+      <text class="modal-icon">🎉</text>
+      <text class="modal-title">本轮完成！</text>
+      <view class="modal-stats">
+        <view class="stat-item">
+          <text class="stat-num">{{stats.mastered}}</text>
+          <text class="stat-label">已掌握</text>
+        </view>
+        <view class="stat-item">
+          <text class="stat-num">{{stats.uncertain}}</text>
+          <text class="stat-label">需复习</text>
+        </view>
+        <view class="stat-item">
+          <text class="stat-num">{{stats.difficult}}</text>
+          <text class="stat-label">较困难</text>
+        </view>
+      </view>
+      <view class="modal-btns">
+        <button class="btn-secondary" bindtap="reviewDifficult">复习困难</button>
+        <button class="btn-primary" bindtap="restart">再来一轮</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 加载状态 -->
+  <view class="loading" wx:if="{{loading}}">
+    <view class="loading-spinner"></view>
+    <text>加载中...</text>
+  </view>
+</view>

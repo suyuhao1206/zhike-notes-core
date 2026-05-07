@@ -1,0 +1,6 @@
+<view class="container">
+  <view class="info-card">
+    <text class="info-title">AI 云端网关</text>
+    <text class="info-desc">密钥只在 aiRouter 云函数环境变量中配置。</text>
+  </view>
+</view>

@@ -1,0 +1,84 @@
+<view class="container">
+  <!-- 统计卡片 -->
+  <view class="stats-card">
+    <view class="stat-item">
+      <text class="stat-num">{{stats.total}}</text>
+      <text class="stat-label">总错题</text>
+    </view>
+    <view class="stat-item">
+      <text class="stat-num stat-pending">{{stats.pending}}</text>
+      <text class="stat-label">待复习</text>
+    </view>
+    <view class="stat-item">
+      <text class="stat-num stat-fixed">{{stats.fixed}}</text>
+      <text class="stat-label">已掌握</text>
+    </view>
+  </view>
+
+  <!-- 筛选栏 -->
+  <view class="filter-bar">
+    <picker bindchange="onFilterChange" value="{{filterCourseIndex}}" range="{{courseOptions}}" range-key="name">
+      <view class="filter-item">
+        <text class="filter-label">课程：</text>
+        <text class="filter-value">{{filterCourseName}}</text>
+        <text class="filter-arrow">▼</text>
+      </view>
+    </picker>
+    <button class="review-btn" bindtap="startReview" disabled="{{stats.pending === 0}}">开始复习</button>
+  </view>
+
+  <!-- 错题列表 -->
+  <view class="mistake-list">
+    <block wx:if="{{mistakes.length > 0}}">
+      <view wx:for="{{mistakes}}" wx:key="id" class="mistake-card {{item.fixed ? 'fixed' : ''}}" bindtap="viewMistake" data-id="{{item.id}}">
+        <view class="mistake-header">
+          <view class="course-tag">{{item.courseName || '未分类'}}</view>
+          <view class="mistake-status">
+            <text class="status-badge {{item.fixed ? 'status-fixed' : 'status-pending'}}">
+              {{item.fixed ? '已掌握' : '待复习'}}
+            </text>
+          </view>
+        </view>
+
+        <view class="mistake-content">
+          <view class="question">
+            <text class="label">题目：</text>
+            <text class="text">{{item.question}}</text>
+          </view>
+          <view class="wrong-answer">
+            <text class="label">错选：</text>
+            <text class="text">{{item.wrongAnswer}}</text>
+          </view>
+          <view class="correct-answer">
+            <text class="label">正确答案：</text>
+            <text class="text">{{item.correctAnswer}}</text>
+          </view>
+        </view>
+
+        <view class="mistake-footer">
+          <text class="time">{{item.createTime}}</text>
+          <view class="actions">
+            <block wx:if="{{!item.fixed}}">
+              <button class="action-btn fix-btn" catchtap="markAsFixed" data-id="{{item.id}}">标记掌握</button>
+            </block>
+            <button class="action-btn retry-btn" catchtap="retryMistake" data-id="{{item.id}}">重新练习</button>
+            <button class="action-btn delete-btn" catchtap="deleteMistake" data-id="{{item.id}}">删除</button>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <!-- 空状态 -->
+    <view wx:else class="empty-state">
+      <image class="empty-icon" src="/images/empty.png" mode="aspectFit"></image>
+      <text class="empty-text">暂无错题记录</text>
+      <text class="empty-hint">在做复习卷时，答错的题目会自动收录到这里</text>
+    </view>
+  </view>
+
+  <!-- 加载中 -->
+  <view wx:if="{{isLoading}}" class="loading">
+    <view class="loading-spinner"></view>
+    <text>加载中...</text>
+  </view>
+</view>
