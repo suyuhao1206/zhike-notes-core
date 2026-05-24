@@ -4,6 +4,9 @@
   <view class="header">
     <text class="title">背诵卡片</text>
     <text class="subtitle">{{currentIndex + 1}} / {{flashcards.length}}</text>
+    <text class="due-subtitle" wx:if="{{currentCard.nextReviewText}}">
+      {{currentCard.isDue ? '今日应复习' : '下次复习'}}：{{currentCard.nextReviewText}}
+    </text>
   </view>
 
   <!-- 卡片区域 -->

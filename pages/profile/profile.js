@@ -1,4 +1,36 @@
 // pages/profile/profile.js
+const api = require('../../api/api.js');
+
+function toFiniteNumber(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function sumDuration(items = []) {
+  return items.reduce((sum, item) => sum + Math.max(toFiniteNumber(item.duration), 0), 0);
+}
+
+function sumStudyStatMinutes(stats = {}) {
+  return Object.keys(stats).reduce((sum, key) => {
+    const item = stats[key] || {};
+    return sum + Math.max(toFiniteNumber(item.minutes), 0);
+  }, 0);
+}
+
+function formatHours(seconds) {
+  return Math.round((seconds / 3600) * 10) / 10;
+}
+
+async function loadCollection(loader, storageKey) {
+  try {
+    const result = await loader();
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    console.warn(`读取${storageKey}失败，改用本地缓存:`, error);
+    return wx.getStorageSync(storageKey) || [];
+  }
+}
+
 Page({
   data: {
     userInfo: null,
@@ -50,20 +82,26 @@ Page({
 
   // 加载统计数据
   async loadStats() {
-    // 从本地存储获取真实数据
-    const notes = wx.getStorageSync('notes') || [];
-    const courses = wx.getStorageSync('courses') || [];
-    const mistakes = wx.getStorageSync('mistakes') || [];
+    // 从统一数据层获取真实数据，失败时再回落到本地缓存
+    const [notes, courses, mistakes] = await Promise.all([
+      loadCollection(() => api.getNotes(), 'notes'),
+      loadCollection(() => api.getCourses(), 'courses'),
+      loadCollection(() => api.getMistakes(), 'mistakes')
+    ]);
     const qaHistory = wx.getStorageSync('qa_history_general') || [];
+    const records = wx.getStorageSync('records') || [];
+    const studyStats = wx.getStorageSync('studyStats') || {};
 
-    // 计算学习时长（从笔记中估算）
-    const totalDuration = notes.reduce((sum, note) => sum + (note.duration || 0), 0);
-    const studyHours = Math.round(totalDuration / 3600 * 10) / 10;
+    // 笔记时长和录音时长可能来自同一批数据，取较大值避免重复累计。
+    const noteDurationSeconds = sumDuration(notes);
+    const recordDurationSeconds = sumDuration(records);
+    const cardStudySeconds = sumStudyStatMinutes(studyStats) * 60;
+    const studyHours = formatHours(Math.max(noteDurationSeconds, recordDurationSeconds) + cardStudySeconds);
 
     const stats = {
       totalNotes: notes.length,
       totalCourses: courses.length,
-      studyHours: studyHours || 0.5,
+      studyHours,
       qaCount: qaHistory.length
     };
 

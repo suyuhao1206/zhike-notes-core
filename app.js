@@ -9,7 +9,7 @@ App({
     
     if (wx.cloud) {
       wx.cloud.init({
-        env: 'REDACTED_CLOUD_ENV',
+        env: 'cloud1-6gegqlssbeb8ee83',
         traceUser: true
       });
       console.log('✅ 云开发环境初始化成功');
@@ -36,56 +36,24 @@ App({
     isLoggedIn: false,
     openId: null,
     token: null,
-    aiConfig: {
-      provider: 'coze',
-      providers: {
-        coze: {
-          baseUrl: 'https://api.coze.cn/v1',
-          apiKey: '',
-          bots: {
-            noteSummary: '',
-            qaAssistant: '',
-            examGenerator: '',
-            flashcardGen: '',
-            ocrVision: '',
-            audioTranscribe: ''
-          }
-        },
-        xfyun: {
-          appId: '',
-          apiKey: '',
-          apiSecret: '',
-          baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
-        },
-        openai: {
-          baseUrl: 'https://api.openai.com/v1',
-          apiKey: '',
-          model: 'gpt-4o-mini'
-        },
-        compatible: {
-          baseUrl: '',
-          apiKey: '',
-          model: ''
-        }
-      }
-    },
+    // cozeConfig / xfyunConfig / xiaomiConfig 的实际值由 config/ai.config.js 提供，
+    // initAIConfig() → syncCozeConfigFromAI() 会自动填充，这里只保留空壳结构
     cozeConfig: {
-      baseUrl: 'https://api.coze.cn/v1',
-      token: '',  // 需要配置你的 Coze Token
-      bots: {
-        noteSummary: '',  // 笔记总结 Bot ID
-        qaAssistant: '',  // 答疑助手 Bot ID
-        examGenerator: '', // 试卷生成 Bot ID
-        flashcardGen: '',  // 卡片生成 Bot ID
-        ocrVision: '',     // 图片识别 Bot ID
-        audioTranscribe: '' // 录音转写 Bot ID
-      }
+      baseUrl: '',
+      token: '',
+      bots: {}
+    },
+    xiaomiConfig: {
+      baseUrl: '',
+      apiKey: '',
+      model: '',
+      visionModel: ''
     },
     xfyunConfig: {
       appId: '',
       apiKey: '',
       apiSecret: '',
-      baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
+      baseUrl: ''
     }
   },
 
@@ -110,6 +78,7 @@ App({
 
     const cozeToken = wx.getStorageSync('cozeToken');
     const cozeBots = wx.getStorageSync('cozeBots');
+    const xiaomiConfig = wx.getStorageSync('xiaomiConfig');
     const xfyunConfig = wx.getStorageSync('xfyunConfig');
     const aiConfig = wx.getStorageSync('aiConfig');
 
@@ -134,6 +103,18 @@ App({
       this.globalData.aiConfig.providers.coze.bots = mergedBots;
     }
 
+    if (xiaomiConfig && (xiaomiConfig.apiKey || xiaomiConfig.baseUrl || xiaomiConfig.model)) {
+      const mergedXiaomiConfig = {
+        ...(this.globalData.aiConfig.providers.xiaomi || {}),
+        ...xiaomiConfig
+      };
+      this.globalData.xiaomiConfig = mergedXiaomiConfig;
+      this.globalData.aiConfig.providers.xiaomi = mergedXiaomiConfig;
+      this.globalData.aiConfig.provider = 'xiaomi';
+      wx.setStorageSync('xiaomiConfig', mergedXiaomiConfig);
+      wx.setStorageSync('aiConfig', this.globalData.aiConfig);
+    }
+
     if (xfyunConfig && (xfyunConfig.appId || xfyunConfig.apiKey || xfyunConfig.apiSecret)) {
       const normalizedXfyunConfig = this.normalizeXfyunConfig(xfyunConfig);
       const mergedXfyunConfig = {
@@ -146,8 +127,14 @@ App({
       wx.setStorageSync('aiConfig', this.globalData.aiConfig);
     }
 
+    // 当前版本默认使用小米 MiMo，避免旧版本地缓存里的 provider: "coze" 覆盖新配置。
+    if (this.globalData.aiConfig.providers && this.globalData.aiConfig.providers.xiaomi) {
+      this.globalData.aiConfig.provider = 'xiaomi';
+    }
+
     // 同步 cozeConfig 与 aiConfig.coze，避免旧代码失效
     this.syncCozeConfigFromAI();
+    this.syncXiaomiConfigFromAI();
     this.syncXfyunConfigFromAI();
   },
 
@@ -167,6 +154,18 @@ App({
     return { ...config };
   },
 
+  normalizeXiaomiModel(model = '') {
+    const value = String(model || '').trim();
+    if (!value) return 'mimo-v2.5-pro';
+    return value.toLowerCase().replace(/^mimo-/, 'mimo-');
+  },
+
+  normalizeXiaomiVisionModel(model = '') {
+    const value = String(model || '').trim();
+    if (!value) return 'mimo-v2.5';
+    return value.toLowerCase().replace(/^mimo-/, 'mimo-');
+  },
+
   maskSecret(value = '', left = 4, right = 4) {
     const text = String(value || '');
     if (!text) return '(empty)';
@@ -179,6 +178,23 @@ App({
     this.globalData.cozeConfig.baseUrl = cozeProvider.baseUrl || 'https://api.coze.cn/v1';
     this.globalData.cozeConfig.token = cozeProvider.apiKey || '';
     this.globalData.cozeConfig.bots = cozeProvider.bots || {};
+  },
+
+  syncXiaomiConfigFromAI() {
+    const xiaomiProvider = this.globalData.aiConfig.providers.xiaomi || {};
+    this.globalData.xiaomiConfig = {
+      baseUrl: xiaomiProvider.baseUrl || 'https://token-plan-sgp.xiaomimimo.com/v1',
+      apiKey: xiaomiProvider.apiKey || '',
+      model: this.normalizeXiaomiModel(xiaomiProvider.model),
+      visionModel: this.normalizeXiaomiVisionModel(xiaomiProvider.visionModel)
+    };
+
+    console.log('🔐 当前小米 MiMo 配置摘要:', {
+      apiKey: this.maskSecret(this.globalData.xiaomiConfig.apiKey, 6, 4),
+      baseUrl: this.globalData.xiaomiConfig.baseUrl,
+      model: this.globalData.xiaomiConfig.model,
+      visionModel: this.globalData.xiaomiConfig.visionModel
+    });
   },
 
   syncXfyunConfigFromAI() {
@@ -230,6 +246,7 @@ App({
     this.globalData.aiConfig = config;
     wx.setStorageSync('aiConfig', config);
     this.syncCozeConfigFromAI();
+    this.syncXiaomiConfigFromAI();
     this.syncXfyunConfigFromAI();
   },
 
@@ -247,6 +264,26 @@ App({
     this.globalData.aiConfig.providers.coze.bots = bots;
     wx.setStorageSync('aiConfig', this.globalData.aiConfig);
     wx.setStorageSync('cozeBots', bots);
+  },
+
+  setXiaomiConfig(config = {}) {
+    const normalizedConfig = {
+      baseUrl: config.baseUrl || 'https://token-plan-sgp.xiaomimimo.com/v1',
+      apiKey: config.apiKey || '',
+      model: this.normalizeXiaomiModel(config.model),
+      visionModel: this.normalizeXiaomiVisionModel(config.visionModel)
+    };
+    if (!this.globalData.aiConfig.providers) {
+      this.globalData.aiConfig.providers = {};
+    }
+    this.globalData.xiaomiConfig = normalizedConfig;
+    this.globalData.aiConfig.provider = 'xiaomi';
+    this.globalData.aiConfig.providers.xiaomi = {
+      ...(this.globalData.aiConfig.providers.xiaomi || {}),
+      ...normalizedConfig
+    };
+    wx.setStorageSync('aiConfig', this.globalData.aiConfig);
+    wx.setStorageSync('xiaomiConfig', normalizedConfig);
   },
 
   setXfyunConfig(config = {}) {

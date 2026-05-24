@@ -2,6 +2,22 @@
 const api = require('../../api/api.js');
 const util = require('../../utils/util.js');
 
+function normalizeMindMapNodes(children) {
+  if (!Array.isArray(children)) return [];
+  return children
+    .map(item => {
+      if (typeof item === 'string') {
+        return { name: item, children: [] };
+      }
+
+      return {
+        name: item.name || item.title || item.text || item.label || '知识点',
+        children: normalizeMindMapNodes(item.children || item.items || item.points || [])
+      };
+    })
+    .filter(item => item.name);
+}
+
 function normalizeMindMap(raw, fallbackTitle) {
   if (!raw) return null;
 
@@ -19,13 +35,10 @@ function normalizeMindMap(raw, fallbackTitle) {
     }
   }
 
-  const children = raw.children || raw.nodes || raw.items || [];
+  const children = Array.isArray(raw) ? raw : (raw.children || raw.nodes || raw.items || []);
   return {
     title: raw.title || raw.name || fallbackTitle || '知识结构',
-    children: children.map(item => ({
-      name: item.name || item.title || item.text || '知识点',
-      children: item.children || item.items || item.points || []
-    }))
+    children: normalizeMindMapNodes(children)
   };
 }
 
@@ -100,17 +113,16 @@ Page({
     if (!mindMap || !mindMap.children) return [];
 
     const sections = preview ? mindMap.children.slice(0, 3) : mindMap.children;
-    return sections.map(section => {
-      const children = section.children || section.items || section.points || [];
+    return sections.map((section, index) => {
+      const children = normalizeMindMapNodes(section.children || section.items || section.points || []);
       const visibleChildren = preview ? children.slice(0, 2) : children;
 
       return {
         name: section.name || section.title || section.text || '知识点',
+        index,
+        side: index % 2 === 0 ? 'right' : 'left',
         moreCount: preview ? Math.max(children.length - visibleChildren.length, 0) : 0,
-        children: visibleChildren.map(item => ({
-          name: item.name || item.title || item.text || String(item),
-          children: item.children || item.items || item.points || []
-        }))
+        children: visibleChildren
       };
     });
   },
@@ -192,7 +204,9 @@ Page({
     wx.showLoading({ title: 'AI分析生成中...', mask: true });
 
     try {
-      const result = await api.summarizeNote(this.data.note.content);
+      const result = await api.generateMindMap(this.data.note.content, {
+        title: this.data.note.title || '知识结构'
+      });
       wx.hideLoading();
 
       console.log('🔍 AI分析返回结果:', result);
@@ -213,6 +227,7 @@ Page({
           children: (result.tags || []).map(tag => ({ name: tag, children: [] }))
         }, note.title);
         note.mindMap = mindMap;
+        note.mermaidMindMap = result.mermaid || result.mermaidMindMap || note.mermaidMindMap || '';
         console.log('✅ 思维导图已设置:', mindMap);
 
         await api.saveNote(note);
@@ -244,6 +259,18 @@ Page({
   goToQA() {
     wx.navigateTo({
       url: `/pages/qa/qa?noteId=${this.data.noteId}`
+    });
+  },
+
+  copyMermaid() {
+    const mermaid = this.data.note && (this.data.note.mermaidMindMap || (this.data.note.mindMap && this.data.note.mindMap.mermaid));
+    if (!mermaid) {
+      wx.showToast({ title: '暂无 Mermaid 内容', icon: 'none' });
+      return;
+    }
+    wx.setClipboardData({
+      data: mermaid,
+      success: () => wx.showToast({ title: '已复制 Mermaid', icon: 'success' })
     });
   },
 

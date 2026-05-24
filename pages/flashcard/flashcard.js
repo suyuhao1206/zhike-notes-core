@@ -63,6 +63,11 @@ Page({
       question: card.question || card.front || '问题',
       answer: card.answer || card.back || '答案',
       status: card.status || 'new',
+      reviewStage: card.reviewStage || 0,
+      intervalDays: card.intervalDays || 0,
+      nextReviewAt: card.nextReviewAt || new Date().toISOString(),
+      nextReviewText: card.nextReviewText || '今天',
+      isDue: true,
       courseId: card.courseId || courseId || '',
       noteId: noteId,
       createTime: card.createTime || new Date().toISOString(),
@@ -107,14 +112,15 @@ Page({
       console.log('云端卡片数据:', cloudCards);
       
       if (cloudCards && cloudCards.length > 0) {
+        const reviewCards = this.sortCardsForReview(cloudCards);
         this.setData({
-          flashcards: cloudCards,
+          flashcards: reviewCards,
           currentIndex: 0,
-          currentCard: cloudCards[0],
+          currentCard: reviewCards[0],
           loading: false,
-          progressPercent: this.calcProgress(0, cloudCards)
+          progressPercent: this.calcProgress(0, reviewCards)
         });
-        wx.setStorageSync('flashcards', cloudCards);
+        wx.setStorageSync('flashcards', reviewCards);
         console.log(`✅ 加载了 ${cloudCards.length} 张卡片`);
         return;
       } else {
@@ -158,13 +164,39 @@ Page({
       return;
     }
 
+    const reviewCards = this.sortCardsForReview(flashcards);
+
     this.setData({
-      flashcards,
+      flashcards: reviewCards,
       currentIndex: 0,
-      currentCard: flashcards[0],
+      currentCard: reviewCards[0],
       loading: false,
-      progressPercent: this.calcProgress(0, flashcards)
+      progressPercent: this.calcProgress(0, reviewCards)
     });
+  },
+
+  sortCardsForReview(cards) {
+    const now = Date.now();
+    return (cards || []).map(card => {
+      const dueTime = card.nextReviewAt ? new Date(card.nextReviewAt).getTime() : 0;
+      return {
+        ...card,
+        nextReviewText: card.nextReviewText || this.formatReviewDate(card.nextReviewAt),
+        isDue: !dueTime || dueTime <= now
+      };
+    }).sort((a, b) => {
+      if (a.isDue !== b.isDue) return a.isDue ? -1 : 1;
+      return new Date(a.nextReviewAt || 0) - new Date(b.nextReviewAt || 0);
+    });
+  },
+
+  formatReviewDate(dateString) {
+    if (!dateString) return '今天';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '今天';
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) return '今天';
+    return `${date.getMonth() + 1}-${date.getDate()}`;
   },
 
   // 生成示例卡片
@@ -275,14 +307,21 @@ Page({
 
   async updateCardStatus(status) {
     const { flashcards, currentIndex } = this.data;
-    flashcards[currentIndex].status = status;
-    flashcards[currentIndex].updateTime = new Date().toISOString();
+    const api = require('../../api/api.js');
+    const schedule = api.planFlashcardReview
+      ? api.planFlashcardReview(flashcards[currentIndex], status)
+      : {};
+    flashcards[currentIndex] = {
+      ...flashcards[currentIndex],
+      status,
+      ...schedule,
+      updateTime: new Date().toISOString()
+    };
     
     this.setData({ flashcards });
     wx.setStorageSync('flashcards', flashcards);
     
     try {
-      const api = require('../../api/api.js');
       const card = flashcards[currentIndex];
       if (card._id) {
         await api.saveFlashcard(card);

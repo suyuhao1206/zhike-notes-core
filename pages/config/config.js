@@ -4,6 +4,12 @@ const api = require('../../api/api.js');
 Page({
   data: {
     cozeToken: '',
+    xiaomi: {
+      baseUrl: 'https://token-plan-sgp.xiaomimimo.com/v1',
+      apiKey: '',
+      model: 'mimo-v2.5-pro',
+      visionModel: 'mimo-v2.5'
+    },
     xfyun: {
       appId: '',
       apiKey: '',
@@ -35,11 +41,18 @@ Page({
   loadConfig() {
     const app = getApp();
     const config = app.globalData.cozeConfig;
+    const xiaomiConfig = app.globalData.xiaomiConfig || {};
     const xfyunConfig = app.globalData.xfyunConfig || {};
 
     this.setData({
       cozeToken: config.token,
       bots: { ...config.bots },
+      xiaomi: {
+        baseUrl: xiaomiConfig.baseUrl || 'https://token-plan-sgp.xiaomimimo.com/v1',
+        apiKey: xiaomiConfig.apiKey || '',
+        model: (xiaomiConfig.model || 'mimo-v2.5-pro').toLowerCase(),
+        visionModel: (xiaomiConfig.visionModel || 'mimo-v2.5').toLowerCase()
+      },
       xfyun: {
         appId: xfyunConfig.appId || '',
         apiKey: xfyunConfig.apiKey || '',
@@ -68,11 +81,19 @@ Page({
     });
   },
 
+  onXiaomiInput(e) {
+    const field = e.currentTarget.dataset.field;
+    this.setData({
+      [`xiaomi.${field}`]: e.detail.value
+    });
+  },
+
   // 保存配置
   saveConfig() {
     const app = getApp();
 
     // 保存到全局
+    app.setXiaomiConfig(this.data.xiaomi);
     app.setCozeToken(this.data.cozeToken);
     app.setCozeBots(this.data.bots);
     app.setXfyunConfig(this.data.xfyun);
@@ -90,27 +111,26 @@ Page({
 
   // 测试连接
   async testConnection() {
-    if (!this.data.cozeToken) {
+    if (!this.data.xiaomi.apiKey) {
       wx.showToast({
-        title: '请先填写Token',
+        title: '请先填写小米 API Key',
         icon: 'none'
       });
       return;
     }
 
     wx.showLoading({ title: '测试中...' });
+    const app = getApp();
+    const originalConfig = JSON.parse(JSON.stringify(app.globalData.aiConfig || {}));
+    const originalXiaomiConfig = wx.getStorageSync('xiaomiConfig');
+    const hadXiaomiConfig = !!originalXiaomiConfig;
 
     try {
       // 临时保存配置
-      const app = getApp();
-      const originalToken = app.globalData.cozeConfig.token;
-      app.globalData.cozeConfig.token = this.data.cozeToken;
+      app.setXiaomiConfig(this.data.xiaomi);
 
       // 测试调用
       const result = await api.askQuestion('你好');
-
-      // 恢复原始配置
-      app.globalData.cozeConfig.token = originalToken;
 
       wx.hideLoading();
       wx.showModal({
@@ -125,6 +145,16 @@ Page({
         content: '错误信息：' + error.message,
         showCancel: false
       });
+    } finally {
+      // 恢复原始配置，避免测试失败后把临时 key 留在全局状态里
+      if (originalConfig && originalConfig.providers) {
+        app.setAIConfig(originalConfig);
+      }
+      if (hadXiaomiConfig) {
+        wx.setStorageSync('xiaomiConfig', originalXiaomiConfig);
+      } else {
+        wx.removeStorageSync('xiaomiConfig');
+      }
     }
   },
 
@@ -132,22 +162,28 @@ Page({
   showHelp() {
     wx.showModal({
       title: '配置帮助',
-      content: `1. 获取 Coze Token：
+      content: `1. 小米 MiMo Token Plan：
+   - Base URL 保持 https://token-plan-sgp.xiaomimimo.com/v1
+   - API Key 填入你的 Token Plan 专属 API key
+   - 模型默认 mimo-v2.5-pro
+   - 拍照识图视觉模型默认 mimo-v2.5
+
+2. 获取 Coze Token（可选，用于保留旧 Bot 能力）：
    - 访问 https://www.coze.cn
    - 进入"个人设置" -> "开发者令牌"
    - 创建并复制 Token
 
-2. 获取 Coze Bot ID：
+3. 获取 Coze Bot ID：
    - 在 Coze 平台创建 Bot
    - 进入 Bot 详情页
    - 复制 Bot ID
 
-3. 获取讯飞密钥：
+4. 获取讯飞密钥：
    - 登录讯飞开放平台
    - 开通录音文件转写服务
    - 复制 APPID、APIKey、APISecret
 
-4. 将以上信息填入对应位置即可。
+5. 将以上信息填入对应位置即可。
    讯飞录音转写现在直接走前端配置，不再依赖云函数环境变量`,
       showCancel: false
     });

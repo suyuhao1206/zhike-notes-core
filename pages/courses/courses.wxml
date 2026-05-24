@@ -44,6 +44,7 @@
           class="modal-input"
           type="text"
           placeholder="请输入课程名称"
+          placeholder-class="modal-input-placeholder"
           value="{{newCourseName}}"
           bindinput="onNameInput"
           focus

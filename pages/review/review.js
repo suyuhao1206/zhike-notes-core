@@ -41,6 +41,9 @@ Page({
     mistakeList: [],
 
     emergencyContent: null,
+    emergencyMeta: null,
+    emergencyCacheKey: '',
+    emergencySignature: '',
     isGeneratingEmergency: false
   },
 
@@ -48,7 +51,7 @@ Page({
     this.refreshTypeOptions();
     
     const noteId = options.noteId;
-    const action = options.action;
+    const action = options.action || options.mode;
 
     this.setData({ noteId, action });
 
@@ -66,6 +69,17 @@ Page({
 
   onShow() {
     const app = getApp();
+    if (app.globalData.reviewPresetMode) {
+      const modeId = app.globalData.reviewPresetMode;
+      app.globalData.reviewPresetMode = null;
+      if (modeId === 'mistakes') {
+        this.setData({ action: 'mistakes' });
+        this.loadMistakes();
+      } else {
+        this.setData({ action: 'selectCourse', currentMode: modeId });
+        this.loadCourses();
+      }
+    }
     if (app.globalData.generateExamNoteId) {
       const noteId = app.globalData.generateExamNoteId;
       app.globalData.generateExamNoteId = null;
@@ -120,18 +134,32 @@ Page({
     const course = this.data.courses.find(c => String(c.id || c._id || '') === String(courseId));
     
     if (course) {
-      this.setData({ 
+      const currentMode = this.data.currentMode;
+      const nextData = {
         selectedCourse: course,
-        action: this.data.currentMode
-      });
+        action: currentMode,
+        courseNotes: []
+      };
+
+      if (currentMode === 'emergency') {
+        Object.assign(nextData, {
+          emergencyContent: null,
+          emergencyMeta: null,
+          emergencyCacheKey: '',
+          emergencySignature: '',
+          isGeneratingEmergency: false
+        });
+      }
+
+      this.setData(nextData);
       
       await this.loadCourseNotes(courseId);
       
-      if (this.data.currentMode === 'exam') {
+      if (currentMode === 'exam') {
         this.setData({ action: 'config' });
-      } else if (this.data.currentMode === 'flashcard') {
+      } else if (currentMode === 'flashcard') {
         this.generateFlashcards();
-      } else if (this.data.currentMode === 'emergency') {
+      } else if (currentMode === 'emergency') {
         this.generateEmergency();
       }
     }
@@ -171,13 +199,80 @@ Page({
     return knowledge;
   },
 
+  getCourseCacheId() {
+    const course = this.data.selectedCourse || {};
+    return String(course._id || course.id || course.name || 'default');
+  },
+
+  hashText(text = '') {
+    const value = String(text || '');
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  },
+
+  getEmergencyCacheKey(courseId) {
+    return `review_emergency_${this.hashText(courseId)}`;
+  },
+
+  getEmergencySignature(knowledge = {}) {
+    const noteMarks = (this.data.courseNotes || []).map(note => [
+      note._id || note.id || '',
+      note.updateTime || note._updateTime || note.createTime || '',
+      String(note.content || '').length,
+      this.hashText(note.content || '')
+    ].join(':')).join('|');
+
+    return this.hashText([
+      this.getCourseCacheId(),
+      noteMarks,
+      this.hashText(knowledge.officialKnowledge || '')
+    ].join('|'));
+  },
+
+  readEmergencyCache(cacheKey, signature) {
+    try {
+      const cached = wx.getStorageSync(cacheKey);
+      if (cached && cached.signature === signature && cached.content) {
+        return cached;
+      }
+    } catch (error) {
+      console.warn('读取急救缓存失败:', error);
+    }
+    return null;
+  },
+
+  saveEmergencyCache(cacheKey, payload) {
+    try {
+      wx.setStorageSync(cacheKey, payload);
+    } catch (error) {
+      console.warn('保存急救缓存失败:', error);
+    }
+  },
+
+  buildEmergencyMeta(payload = {}, fromCache = false) {
+    return {
+      fromCache,
+      sourceText: fromCache ? '已加载上次生成' : '已生成',
+      generatedAt: payload.generatedAt || Date.now(),
+      generatedAtText: util.formatDateTime(payload.generatedAt || Date.now(), 'MM-DD HH:mm')
+    };
+  },
+
   async loadMistakes() {
     try {
       const mistakes = await api.getMistakes();
+      const now = Date.now();
       this.setData({
         mistakeList: (mistakes || []).map(item => ({
           ...item,
-          id: item._id || item.id
+          id: item._id || item.id,
+          dueText: item.nextReviewAt
+            ? (new Date(item.nextReviewAt).getTime() <= now ? '今日复习' : `下次 ${item.nextReviewText || ''}`)
+            : '待安排'
         }))
       });
     } catch (error) {
@@ -402,47 +497,88 @@ Page({
     ];
   },
 
-  async generateEmergency() {
-    this.setData({ isGeneratingEmergency: true });
+  async generateEmergency(options = {}) {
+    if (this.data.isGeneratingEmergency) return;
+
+    const force = options && options.force === true;
+    let loadingShown = false;
 
     try {
       const knowledge = await this.getCourseKnowledge();
       const courseName = this.data.selectedCourse ? this.data.selectedCourse.name : '课程';
-      
-      const emergencyContent = {
-        title: `${courseName} - 期末急救知识点`,
-        sections: [
-          {
-            title: '一、核心概念',
-            content: knowledge.officialKnowledge ? 
-              knowledge.officialKnowledge.substring(0, 500) : 
-              '核心概念整理中...'
-          },
-          {
-            title: '二、重点公式',
-            content: '重点公式整理中...'
-          },
-          {
-            title: '三、常见题型',
-            content: '常见题型整理中...'
-          },
-          {
-            title: '四、易错点',
-            content: '易错点整理中...'
-          }
-        ]
+      const content = `【官方资料】\n${knowledge.officialKnowledge}\n\n【用户笔记】\n${knowledge.userNotes}`;
+
+      if (!content || content.trim().length < 50) {
+        this.setData({ isGeneratingEmergency: false });
+        wx.showModal({
+          title: '提示',
+          content: '该课程暂无足够学习资料，请先添加笔记',
+          showCancel: false
+        });
+        return;
+      }
+
+      const courseId = this.getCourseCacheId();
+      const cacheKey = this.getEmergencyCacheKey(courseId);
+      const signature = this.getEmergencySignature(knowledge);
+
+      if (!force && this.data.emergencyContent && this.data.emergencyCacheKey === cacheKey && this.data.emergencySignature === signature) {
+        this.setData({ action: 'emergency' });
+        return;
+      }
+
+      if (!force) {
+        const cached = this.readEmergencyCache(cacheKey, signature);
+        if (cached) {
+          this.setData({
+            emergencyContent: cached.content,
+            emergencyMeta: this.buildEmergencyMeta(cached, true),
+            emergencyCacheKey: cacheKey,
+            emergencySignature: signature,
+            action: 'emergency',
+            isGeneratingEmergency: false
+          });
+          wx.showToast({ title: '已加载上次生成结果', icon: 'none' });
+          return;
+        }
+      }
+
+      this.setData({ isGeneratingEmergency: true });
+      wx.showLoading({ title: force ? '重新生成中...' : '生成急救精华中...', mask: true });
+      loadingShown = true;
+
+      const emergencyContent = await api.generateEmergency(content, {
+        title: `${courseName} - 急救模式`
+      });
+
+      wx.hideLoading();
+      loadingShown = false;
+
+      const cachePayload = {
+        content: emergencyContent,
+        signature,
+        generatedAt: Date.now()
       };
+      this.saveEmergencyCache(cacheKey, cachePayload);
 
       this.setData({
         emergencyContent,
+        emergencyMeta: this.buildEmergencyMeta(cachePayload, false),
+        emergencyCacheKey: cacheKey,
+        emergencySignature: signature,
         action: 'emergency',
         isGeneratingEmergency: false
       });
     } catch (error) {
+      if (loadingShown) wx.hideLoading();
       console.error('生成急救内容失败:', error);
       this.setData({ isGeneratingEmergency: false });
       wx.showToast({ title: '生成失败', icon: 'none' });
     }
+  },
+
+  refreshEmergency() {
+    this.generateEmergency({ force: true });
   },
 
   // 选择答案
@@ -524,12 +660,20 @@ Page({
 
     // 保存错题
     if (wrongQuestions.length > 0) {
+      const knowledge = await this.getCourseKnowledge();
+      const mistakeContext = `【官方资料】\n${knowledge.officialKnowledge}\n\n【用户笔记】\n${knowledge.userNotes}`;
+      const selectedCourse = this.data.selectedCourse || {};
       for (const wrong of wrongQuestions) {
-        await api.saveMistake({
-          courseId: this.data.note?.courseId,
-          courseName: this.data.note?.courseName || '未知课程',
+        const baseMistake = {
+          courseId: this.data.note?.courseId || selectedCourse.id || selectedCourse._id || '',
+          courseName: this.data.note?.courseName || selectedCourse.name || '未知课程',
           noteId: this.data.noteId,
           ...wrong
+        };
+        const analysis = await api.analyzeMistake(baseMistake, mistakeContext);
+        await api.saveMistake({
+          ...baseMistake,
+          ...analysis
         });
       }
     }

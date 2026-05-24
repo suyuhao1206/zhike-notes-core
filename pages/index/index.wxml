@@ -29,6 +29,21 @@
     </view>
   </view>
 
+  <view class="section capability-section">
+    <view class="section-header">
+      <text class="section-title">核心能力</text>
+    </view>
+    <view class="capability-grid">
+      <view class="capability-card" wx:for="{{coreCapabilities}}" wx:key="id" bindtap="openCapability" data-id="{{item.id}}">
+        <text class="capability-icon">{{item.icon}}</text>
+        <view class="capability-content">
+          <text class="capability-name">{{item.name}}</text>
+          <text class="capability-desc">{{item.desc}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
   <!-- 课程列表 -->
   <view class="section">
     <view class="section-header">

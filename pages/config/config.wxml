@@ -1,9 +1,60 @@
 <view class="container">
   <!-- 说明卡片 -->
   <view class="info-card">
-    <text class="info-title">📋 Coze API 配置</text>
-    <text class="info-desc">配置Coze平台的API密钥，以启用AI功能</text>
+    <text class="info-title">📋 AI 模型配置</text>
+    <text class="info-desc">默认使用小米 MiMo Token Plan，API Key 留空时会回退到本地模拟结果</text>
     <text class="help-link" bindtap="showHelp">查看配置帮助 ></text>
+  </view>
+
+  <view class="config-card">
+    <view class="card-header">
+      <text class="card-title">小米 MiMo 模型配置</text>
+    </view>
+    <view class="input-group">
+      <text class="input-label">Base URL</text>
+      <input
+        class="input-field"
+        type="text"
+        placeholder="https://token-plan-sgp.xiaomimimo.com/v1"
+        value="{{xiaomi.baseUrl}}"
+        data-field="baseUrl"
+        bindinput="onXiaomiInput"
+      />
+    </view>
+    <view class="input-group">
+      <text class="input-label">API Key</text>
+      <input
+        class="input-field"
+        type="text"
+        password="true"
+        placeholder="请填入小米 Token Plan API Key"
+        value="{{xiaomi.apiKey}}"
+        data-field="apiKey"
+        bindinput="onXiaomiInput"
+      />
+    </view>
+    <view class="input-group">
+      <text class="input-label">模型</text>
+      <input
+        class="input-field"
+        type="text"
+        placeholder="mimo-v2.5-pro"
+        value="{{xiaomi.model}}"
+        data-field="model"
+        bindinput="onXiaomiInput"
+      />
+    </view>
+    <view class="input-group">
+      <text class="input-label">视觉模型</text>
+      <input
+        class="input-field"
+        type="text"
+        placeholder="mimo-v2.5"
+        value="{{xiaomi.visionModel}}"
+        data-field="visionModel"
+        bindinput="onXiaomiInput"
+      />
+    </view>
   </view>
 
   <!-- Token配置 -->
@@ -88,6 +139,6 @@
 
   <!-- 提示信息 -->
   <view class="tips">
-    <text class="tips-text">💡 提示：Coze 和讯飞密钥都会保存在本地缓存中，不再依赖云函数环境变量</text>
+    <text class="tips-text">💡 提示：小米 MiMo、Coze 和讯飞密钥都会保存在本地缓存中，不再依赖云函数环境变量</text>
   </view>
 </view>

@@ -161,8 +161,12 @@
   <!-- 急救模式 -->
   <view class="emergency-page" wx:if="{{action === 'emergency'}}">
     <view class="header">
-      <text class="back-btn" bindtap="goBack">← 返回</text>
+      <view class="emergency-topbar">
+        <text class="back-btn" bindtap="goBack">← 返回</text>
+        <button class="refresh-btn" bindtap="refreshEmergency" loading="{{isGeneratingEmergency}}">重新生成</button>
+      </view>
       <text class="title">期末急救</text>
+      <text class="subtitle" wx:if="{{emergencyMeta}}">{{emergencyMeta.sourceText}} - {{emergencyMeta.generatedAtText}}</text>
     </view>
     
     <view class="emergency-content" wx:if="{{emergencyContent}}">
@@ -206,6 +210,12 @@
         <view class="mistake-answers">
           <text class="wrong-answer">错误: {{item.wrongAnswer}}</text>
           <text class="correct-answer">正确: {{item.correctAnswer}}</text>
+        </view>
+        <view class="mistake-ai" wx:if="{{item.errorReason || item.fixStrategy || item.nextReviewText}}">
+          <text class="mistake-ai-title">AI 诊断</text>
+          <text class="mistake-ai-text" wx:if="{{item.errorReason}}">原因：{{item.errorReason}}</text>
+          <text class="mistake-ai-text" wx:if="{{item.fixStrategy}}">建议：{{item.fixStrategy}}</text>
+          <text class="mistake-ai-text" wx:if="{{item.dueText}}">复习：{{item.dueText}}</text>
         </view>
       </view>
       

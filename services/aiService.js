@@ -15,7 +15,7 @@ class AIService {
    */
   init(config = {}) {
     this.config = {
-      provider: config.provider || 'coze',
+      provider: config.provider || 'xiaomi',
       apiKeys: config.apiKeys || {},
       models: config.models || {},
       ...config
@@ -29,7 +29,30 @@ class AIService {
         cozeToken: cozeConfig.apiKey || this.config.apiKeys.cozeToken || '',
         cozeBotId: cozeConfig.bots?.qaAssistant || this.config.apiKeys.cozeBotId || ''
       }
+    } else if (this.isOpenAICompatibleProvider(this.provider)) {
+      const providerConfig = this.config.providers?.[this.provider] || {}
+      this.config.apiKeys = {
+        ...this.config.apiKeys,
+        openaiKey: providerConfig.apiKey || this.config.apiKeys.openaiKey || '',
+        openaiHost: providerConfig.baseUrl || this.config.apiKeys.openaiHost || 'https://api.openai.com/v1'
+      }
+      this.config.models = {
+        ...this.config.models,
+        chat: providerConfig.model || this.config.models.chat || 'gpt-4o-mini'
+      }
     }
+  }
+
+  isOpenAICompatibleProvider(provider) {
+    return provider === 'openai' || provider === 'xiaomi' || provider === 'compatible'
+  }
+
+  normalizeModel(model) {
+    const value = String(model || '').trim()
+    if (this.provider === 'xiaomi') {
+      return (value || 'mimo-v2.5-pro').toLowerCase()
+    }
+    return value
   }
 
   /**
@@ -46,7 +69,7 @@ class AIService {
 
     if (this.provider === 'coze') {
       return await this.chatWithCoze(messages, { temperature, maxTokens, stream })
-    } else if (this.provider === 'openai') {
+    } else if (this.isOpenAICompatibleProvider(this.provider)) {
       return await this.chatWithOpenAI(messages, { temperature, maxTokens, stream })
     } else {
       throw new Error(`Unsupported provider: ${this.provider}`)
@@ -116,7 +139,7 @@ class AIService {
     const { temperature, maxTokens, stream } = options
     
     const apiKey = this.config.apiKeys.openaiKey
-    const model = this.config.models.chat || 'gpt-4o-mini'
+    const model = this.normalizeModel(this.config.models.chat || 'gpt-4o-mini')
     const host = this.config.apiKeys.openaiHost || 'https://api.openai.com/v1'
     
     if (!apiKey) {
@@ -124,6 +147,18 @@ class AIService {
     }
 
     try {
+      const data = {
+        model,
+        messages,
+        temperature,
+        stream
+      }
+      if (this.provider === 'xiaomi') {
+        data.max_completion_tokens = maxTokens
+      } else {
+        data.max_tokens = maxTokens
+      }
+
       const response = await wx.request({
         url: `${host}/chat/completions`,
         method: 'POST',
@@ -131,26 +166,21 @@ class AIService {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
-        data: {
-          model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-          stream
-        }
+        data
       })
 
       if (response.statusCode !== 200) {
         throw new Error(`OpenAI API error: ${response.statusCode}`)
       }
 
-      const data = response.data
-      const choice = data.choices[0]
+      const responseData = response.data
+      const choice = responseData.choices[0]
+      const content = choice.message.content || choice.message.reasoning_content || ''
       
       return {
-        content: choice.message.content,
-        model: data.model,
-        usage: data.usage
+        content,
+        model: responseData.model,
+        usage: responseData.usage
       }
     } catch (error) {
       console.error('OpenAI chat failed:', error)

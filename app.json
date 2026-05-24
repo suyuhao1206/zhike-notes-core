@@ -20,14 +20,14 @@
     "pages/cloud-storage/cloud-storage"
   ],
   "window": {
-    "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#1890FF",
+    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "#F9FAFB",
     "navigationBarTitleText": "智课笔记",
-    "navigationBarTextStyle": "white"
+    "navigationBarTextStyle": "black"
   },
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#1890FF",
+    "color": "#9CA3AF",
+    "selectedColor": "#7C3AED",
     "backgroundColor": "#ffffff",
     "list": [
       {

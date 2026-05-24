@@ -1,191 +1,247 @@
+/* pages/courses/courses.wxss */
 .container {
-  background-color: #f5f5f5;
+  padding: var(--space-md);
+  background: var(--background-color);
   min-height: 100vh;
-  padding: 20rpx;
 }
 
-/* 课程列表 */
 .course-list {
-  padding-bottom: 120rpx;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
 }
 
 .course-card {
-  background: #fff;
-  border-radius: 16rpx;
-  padding: 25rpx;
-  margin-bottom: 20rpx;
+  background: var(--surface-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-sm);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
+  transition: transform var(--transition-fast);
+}
+
+.course-card:active {
+  transform: scale(0.98);
 }
 
 .course-info {
   display: flex;
   align-items: center;
+  gap: var(--space-md);
   flex: 1;
 }
 
 .course-icon {
-  font-size: 50rpx;
-  margin-right: 20rpx;
+  font-size: 64rpx;
+  width: 100rpx;
+  height: 100rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray-50);
+  border-radius: var(--radius-md);
 }
 
 .course-detail {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
 }
 
 .course-name {
-  font-size: 32rpx;
-  font-weight: bold;
-  color: #333;
-  display: block;
-  margin-bottom: 8rpx;
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .course-meta {
-  font-size: 24rpx;
-  color: #999;
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
+  background: var(--gray-100);
+  padding: 4rpx 16rpx;
+  border-radius: var(--radius-full);
+  display: inline-block;
 }
 
 .course-actions {
   display: flex;
-  gap: 20rpx;
+  gap: var(--space-sm);
 }
 
 .action-btn {
-  font-size: 26rpx;
-  color: #1890ff;
-  padding: 10rpx 20rpx;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  background: var(--gray-50);
+  padding: 12rpx 24rpx;
+  border-radius: var(--radius-full);
+  transition: all var(--transition-fast);
+}
+
+.action-btn:active {
+  background: var(--gray-200);
 }
 
 .action-btn.delete {
-  color: #ff4d4f;
+  color: var(--error-color);
+  background: var(--error-bg);
+}
+
+.action-btn.delete:active {
+  background: rgba(255, 69, 58, 0.2);
 }
 
 /* 空状态 */
 .empty-state {
-  text-align: center;
-  padding: 150rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl) var(--space-md);
 }
 
 .empty-icon {
-  font-size: 100rpx;
-  display: block;
-  margin-bottom: 20rpx;
+  font-size: 96rpx;
+  margin-bottom: var(--space-md);
+  opacity: 0.5;
+  filter: grayscale(100%);
 }
 
 .empty-text {
-  font-size: 32rpx;
-  color: #666;
-  display: block;
-  margin-bottom: 10rpx;
+  font-size: var(--font-base);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
 }
 
 .empty-hint {
-  font-size: 26rpx;
-  color: #999;
+  font-size: var(--font-sm);
+  color: var(--text-tertiary);
 }
 
-/* 悬浮按钮 */
+/* FAB */
 .fab {
   position: fixed;
   right: 40rpx;
   bottom: 60rpx;
-  width: 100rpx;
-  height: 100rpx;
-  background: linear-gradient(135deg, #1890ff, #36cfc9);
+  width: 112rpx;
+  height: 112rpx;
+  background: var(--gradient-primary);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 20rpx rgba(24,144,255,0.4);
+  box-shadow: var(--shadow-glow);
+  z-index: 100;
+  transition: transform var(--transition-fast);
+}
+
+.fab:active {
+  transform: scale(0.9);
 }
 
 .fab-icon {
-  font-size: 50rpx;
-  color: #fff;
-  font-weight: bold;
+  font-size: 64rpx;
+  color: var(--text-inverse);
+  font-weight: 300;
+  margin-bottom: 8rpx;
 }
 
 /* 弹窗 */
 .modal {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-mask {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.5);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeIn var(--transition-fast) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-content {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 80%;
-  background: #fff;
-  border-radius: 16rpx;
-  overflow: hidden;
+  position: relative;
+  width: 86%;
+  background: var(--surface-color);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-lg);
+  animation: scaleIn var(--transition-fast) forwards;
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .modal-header {
-  padding: 30rpx;
-  border-bottom: 1rpx solid #eee;
+  text-align: center;
+  margin-bottom: var(--space-lg);
 }
 
 .modal-title {
-  font-size: 32rpx;
-  font-weight: bold;
-  color: #333;
-}
-
-.modal-body {
-  padding: 30rpx;
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .modal-input {
-  width: 100%;
-  height: 80rpx;
-  border: 1rpx solid #ddd;
-  border-radius: 8rpx;
-  padding: 0 20rpx;
+  background: var(--gray-50);
+  border: 1px solid var(--border-color);
+  height: 88rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  padding: 0 28rpx;
+  border-radius: var(--radius-md);
   font-size: 30rpx;
+  color: var(--text-primary);
+  width: 100%;
   box-sizing: border-box;
+  margin-bottom: var(--space-lg);
+}
+
+.modal-input-placeholder {
+  color: var(--text-tertiary);
+  font-size: 30rpx;
+}
+
+.modal-input:focus {
+  border-color: var(--primary-color);
 }
 
 .modal-footer {
   display: flex;
-  border-top: 1rpx solid #eee;
+  gap: var(--space-md);
 }
 
-.btn-cancel,
-.btn-confirm {
+.btn-cancel, .btn-confirm {
   flex: 1;
-  height: 90rpx;
-  line-height: 90rpx;
-  text-align: center;
-  font-size: 30rpx;
-  background: none;
-  border: none;
-  border-radius: 0;
+  font-size: var(--font-base);
+  font-weight: 600;
+  padding: 20rpx 0;
+  border-radius: var(--radius-full);
+  margin: 0;
 }
 
 .btn-cancel {
-  color: #666;
-  border-right: 1rpx solid #eee;
+  background: var(--gray-100);
+  color: var(--text-secondary);
 }
 
 .btn-confirm {
-  color: #1890ff;
-  font-weight: bold;
+  background: var(--gradient-primary);
+  color: var(--text-inverse);
 }

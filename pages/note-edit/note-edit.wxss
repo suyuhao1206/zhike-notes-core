@@ -1,95 +1,132 @@
+/* pages/note-edit/note-edit.wxss */
 .container {
   min-height: 100vh;
-  background: #f5f5f5;
-  padding-bottom: 180rpx;
+  background: var(--surface-color);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 200rpx);
+  display: flex;
+  flex-direction: column;
 }
 
 .form {
-  background: #fff;
-  padding: 20rpx 30rpx;
+  padding: var(--space-xl) var(--space-lg) var(--space-md);
+  flex: 1;
 }
 
 .form-item {
-  margin-bottom: 20rpx;
+  margin-bottom: var(--space-lg);
 }
 
 .label {
-  font-size: 28rpx;
-  color: #666;
-  margin-bottom: 10rpx;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-xs);
   display: block;
 }
 
+/* 课程选择器 - 标签化设计 */
 .picker {
-  display: flex;
+  display: inline-flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20rpx 24rpx;
-  background: #f8f8f8;
-  border-radius: 12rpx;
-  font-size: 30rpx;
-  color: #333;
+  padding: 12rpx 24rpx;
+  background: var(--primary-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  color: var(--primary-dark);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.picker:active {
+  transform: scale(0.96);
 }
 
 .arrow {
-  font-size: 24rpx;
-  color: #999;
+  font-size: 20rpx;
+  margin-left: var(--space-xs);
+  opacity: 0.6;
 }
 
+/* 沉浸式标题输入框 */
 .title-input {
-  width: 100%;
-  font-size: 36rpx;
-  font-weight: bold;
-  padding: 20rpx 0;
-  border-bottom: 1rpx solid #eee;
+  display: block;
+  width: calc(100% + 64rpx);
+  margin-left: -32rpx;
+  box-sizing: border-box;
+  font-size: var(--font-2xl);
+  font-weight: 800;
+  padding: var(--space-md) 32rpx;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-primary);
+  transition: border-color var(--transition-fast);
+}
+
+.title-input:focus {
+  border-bottom-color: var(--primary-color);
 }
 
 .content-item {
-  margin-top: 20rpx;
+  margin-top: var(--space-md);
 }
 
+/* 正文编辑区 */
 .content-input {
   width: 100%;
-  min-height: 400rpx;
-  font-size: 30rpx;
+  min-height: 50vh;
+  font-size: var(--font-lg);
   line-height: 1.8;
-  padding: 20rpx 0;
+  color: var(--text-primary);
+  padding: var(--space-sm) 0;
 }
 
 .word-count {
   display: flex;
   justify-content: flex-end;
-  font-size: 24rpx;
-  color: #999;
-  margin-top: 10rpx;
+  align-items: center;
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px dashed var(--border-color);
 }
 
 .saving {
-  color: #1890ff;
-  margin-left: 20rpx;
+  color: var(--primary-color);
+  margin-left: var(--space-sm);
+  font-weight: 500;
 }
 
 .saved {
-  color: #52c41a;
-  margin-left: 20rpx;
+  color: var(--success-color);
+  margin-left: var(--space-sm);
+  font-weight: 500;
 }
 
+/* 悬浮工具栏 */
 .toolbar {
   display: flex;
-  background: #fff;
-  padding: 20rpx 30rpx;
-  margin-top: 20rpx;
-  border-top: 1rpx solid #eee;
-  border-bottom: 1rpx solid #eee;
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border-light);
+  gap: var(--space-sm);
 }
 
 .tool-btn {
   display: flex;
   align-items: center;
-  padding: 16rpx 30rpx;
-  background: #f5f5f5;
-  border-radius: 30rpx;
-  margin-right: 20rpx;
+  padding: 12rpx 24rpx;
+  background: var(--gray-50);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  transition: all var(--transition-fast);
+}
+
+.tool-btn:active {
+  background: var(--gray-200);
+  transform: scale(0.96);
 }
 
 .tool-icon {
@@ -98,31 +135,46 @@
 }
 
 .tool-text {
-  font-size: 26rpx;
-  color: #666;
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
+/* 底部保存按钮 */
 .footer {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 20rpx 30rpx;
-  background: #fff;
-  box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
+  padding: var(--space-md) var(--space-lg) calc(env(safe-area-inset-bottom) + var(--space-md));
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.05);
+  z-index: 100;
 }
 
 .btn-save {
   width: 100%;
-  height: 88rpx;
-  line-height: 88rpx;
-  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
-  color: #fff;
-  font-size: 32rpx;
-  border-radius: 44rpx;
-  border: none;
+  background: var(--gradient-primary);
+  color: var(--text-inverse);
+  font-size: var(--font-lg);
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  padding: 24rpx 0;
+  box-shadow: var(--shadow-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
 }
 
 .btn-save::after {
   border: none;
+}
+
+.btn-save:active {
+  transform: scale(0.98);
+  box-shadow: none;
+  opacity: 0.9;
 }

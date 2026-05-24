@@ -2,50 +2,84 @@
 
 /* 搜索栏 */
 .search-bar {
-  margin-bottom: 20rpx;
+  margin-bottom: var(--space-md);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--background-color);
+  padding-bottom: 8rpx;
 }
 
 .search-input-placeholder {
   display: flex;
   align-items: center;
-  background: #fff;
-  padding: 20rpx 30rpx;
-  border-radius: 40rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 20rpx 32rpx;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  transition: all var(--transition-fast);
+}
+
+.search-input-placeholder:active {
+  background: rgba(255, 255, 255, 0.9);
+  transform: scale(0.98);
 }
 
 .search-icon {
   font-size: 32rpx;
-  margin-right: 16rpx;
-  opacity: 0.5;
+  margin-right: var(--space-sm);
+  opacity: 0.6;
+  filter: drop-shadow(0 2rpx 4rpx rgba(0,0,0,0.1));
 }
 
 .search-text {
-  font-size: 28rpx;
-  color: #999;
+  font-size: var(--font-sm);
+  color: var(--text-placeholder);
 }
 
+/* 欢迎卡片 */
 .welcome-card {
-  background: linear-gradient(135deg, #1890FF 0%, #36CFC9 100%);
-  color: #FFFFFF;
+  background: var(--gradient-primary);
+  color: var(--text-inverse);
+  position: relative;
+  overflow: hidden;
+  border: none;
+}
+
+.welcome-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 300rpx;
+  height: 300rpx;
+  background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
+  border-radius: 50%;
 }
 
 .welcome-title {
-  font-size: 40rpx;
-  font-weight: bold;
+  font-size: var(--font-xl);
+  font-weight: 700;
   display: block;
-  margin-bottom: 16rpx;
+  margin-bottom: var(--space-xs);
+  letter-spacing: 1rpx;
+  text-shadow: 0 2rpx 8rpx rgba(0,0,0,0.1);
 }
 
 .welcome-subtitle {
-  font-size: 28rpx;
-  opacity: 0.9;
+  font-size: var(--font-sm);
+  opacity: 0.85;
 }
 
 .quick-actions {
   display: flex;
-  margin-top: 32rpx;
-  gap: 24rpx;
+  margin-top: var(--space-lg);
+  gap: var(--space-md);
+  position: relative;
+  z-index: 1;
 }
 
 .action-btn {
@@ -53,153 +87,257 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24rpx;
-  background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 16rpx;
+  padding: var(--space-md) var(--space-sm);
+  background-color: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all var(--transition-fast);
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+  background-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 20rpx rgba(255, 255, 255, 0.2);
 }
 
 .action-icon {
   font-size: 48rpx;
-  margin-bottom: 12rpx;
+  margin-bottom: var(--space-xs);
+  filter: drop-shadow(0 4rpx 8rpx rgba(0,0,0,0.2));
 }
 
 .action-text {
-  font-size: 24rpx;
+  font-size: var(--font-xs);
+  font-weight: 500;
 }
 
+/* 核心能力区 */
 .section {
-  margin-top: 24rpx;
+  margin-top: var(--space-lg);
 }
 
-.section-header {
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.capability-card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16rpx;
-  padding: 0 8rpx;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  background: var(--surface-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  min-height: 140rpx;
+  box-sizing: border-box;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.section-title {
-  font-size: 32rpx;
-  font-weight: bold;
+.capability-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8rpx;
+  background: var(--gradient-primary);
+  opacity: 0.8;
+}
+
+.capability-card:active {
+  transform: translateY(-4rpx) scale(0.98);
+  box-shadow: var(--shadow-md);
+}
+
+.capability-icon {
+  font-size: 44rpx;
+  line-height: 1;
+}
+
+.capability-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.capability-name {
+  display: block;
+  font-size: var(--font-sm);
+  font-weight: 600;
   color: var(--text-primary);
+  margin-bottom: 6rpx;
 }
 
-.section-more {
-  font-size: 24rpx;
+.capability-desc {
+  display: block;
+  font-size: var(--font-xs);
+  line-height: 1.4;
   color: var(--text-secondary);
+}
+
+/* 课程和笔记列表 */
+.course-list, .note-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
 }
 
 .course-item,
 .note-item {
-  padding: 24rpx;
+  background-color: var(--surface-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 0; /* 依靠 gap 控制间距 */
+}
+
+.course-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8rpx;
+  background: var(--success-color); /* 课程用成功色调标识 */
+  opacity: 0.7;
+}
+
+.note-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8rpx;
+  background: var(--info-color); /* 笔记用信息色调标识 */
+  opacity: 0.7;
+}
+
+.course-item:active, .note-item:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-md);
 }
 
 .course-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12rpx;
+  margin-bottom: var(--space-xs);
 }
 
 .course-name {
-  font-size: 32rpx;
-  font-weight: bold;
+  font-size: var(--font-lg);
+  font-weight: 600;
   color: var(--text-primary);
 }
 
 .course-note-count {
-  font-size: 24rpx;
-  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
+  background: var(--gray-100);
+  padding: 4rpx 16rpx;
+  border-radius: var(--radius-full);
 }
 
 .course-time {
-  font-size: 24rpx;
-  color: var(--text-placeholder);
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
 }
 
 .note-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12rpx;
+  margin-bottom: var(--space-sm);
 }
 
 .note-course {
-  font-size: 24rpx;
-  color: var(--primary-color);
-  background-color: rgba(24, 144, 255, 0.1);
-  padding: 4rpx 12rpx;
-  border-radius: 8rpx;
+  font-size: var(--font-xs);
+  color: var(--primary-dark);
+  background-color: var(--primary-bg);
+  padding: 6rpx 16rpx;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
 }
 
 .note-time {
-  font-size: 24rpx;
-  color: var(--text-placeholder);
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
 }
 
 .note-title {
-  font-size: 30rpx;
-  font-weight: bold;
+  font-size: var(--font-base);
+  font-weight: 600;
   color: var(--text-primary);
   display: block;
-  margin-bottom: 8rpx;
+  margin-bottom: var(--space-xs);
 }
 
 .note-summary {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-secondary);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  line-height: 1.5;
 }
 
+/* 空状态增强 */
 .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80rpx 24rpx;
-  text-align: center;
+  /* 已经在 app.wxss 中定义基础样式，这里添加首页特有微调 */
+  background: transparent;
+  box-shadow: none;
+  padding: var(--space-xl) var(--space-md);
 }
 
 .empty-icon {
-  font-size: 80rpx;
-  margin-bottom: 24rpx;
+  font-size: 88rpx;
+  opacity: 0.6;
+  filter: saturate(0.5); /* 柔和色调 */
 }
 
-.empty-text {
-  font-size: 28rpx;
-  color: var(--text-placeholder);
-}
-
-.empty-hint {
-  font-size: 24rpx;
-  color: #999;
-  margin-top: 12rpx;
-}
-
-/* 快速创建浮动按钮 */
+/* 快速创建浮动按钮 (FAB) */
 .quick-create-fab {
   position: fixed;
-  right: 32rpx;
-  bottom: 120rpx;
+  right: 40rpx;
+  bottom: 140rpx;
   width: 112rpx;
   height: 112rpx;
-  background: linear-gradient(135deg, #1890FF 0%, #36CFC9 100%);
+  background: var(--gradient-primary);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8rpx 24rpx rgba(24, 144, 255, 0.4);
+  box-shadow: var(--shadow-glow);
   z-index: 100;
+  transition: transform var(--transition-fast);
+  animation: pulse 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.quick-create-fab:active {
+  transform: scale(0.9);
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(94, 92, 230, 0.4); }
+  70% { box-shadow: 0 0 0 20rpx rgba(94, 92, 230, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(94, 92, 230, 0); }
 }
 
 .quick-create-fab .fab-icon {
-  font-size: 56rpx;
-  color: #fff;
+  font-size: 64rpx;
+  color: var(--text-inverse);
   font-weight: 300;
+  margin-bottom: 8rpx; /* 微调居中 */
 }
 
 /* 快速创建菜单 */
@@ -218,39 +356,63 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeInMask var(--transition-fast) forwards;
+}
+
+@keyframes fadeInMask {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .menu-content {
   position: absolute;
-  right: 32rpx;
-  bottom: 250rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  padding: 16rpx;
-  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
-  min-width: 200rpx;
+  right: 40rpx;
+  bottom: 280rpx;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xs);
+  box-shadow: var(--shadow-lg);
+  min-width: 260rpx;
+  animation: slideUpFade var(--transition-fast) forwards;
+  transform-origin: bottom right;
+}
+
+@keyframes slideUpFade {
+  from { 
+    opacity: 0; 
+    transform: translateY(20rpx) scale(0.9);
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0) scale(1);
+  }
 }
 
 .menu-content .menu-item {
   display: flex;
   align-items: center;
-  padding: 24rpx 32rpx;
-  border-radius: 12rpx;
-  transition: background 0.2s;
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast);
 }
 
 .menu-content .menu-item:active {
-  background: #f5f5f5;
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .menu-content .menu-icon {
   font-size: 40rpx;
-  margin-right: 20rpx;
+  margin-right: var(--space-md);
 }
 
 .menu-content .menu-text {
-  font-size: 28rpx;
-  color: #333;
+  font-size: var(--font-base);
+  font-weight: 500;
+  color: var(--text-primary);
 }
-

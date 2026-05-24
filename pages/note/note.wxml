@@ -40,6 +40,10 @@
         <text class="action-icon">📝</text>
         <text class="action-text">生成试卷</text>
       </view>
+      <view class="action-item" bindtap="generateFlashcard">
+        <text class="action-icon">🃏</text>
+        <text class="action-text">背诵卡片</text>
+      </view>
     </view>
 
     <view class="action-bar second-bar">
@@ -123,9 +127,16 @@
         <view class="mindmap-graph">
           <view class="graph-root">{{mindMap.title}}</view>
           <view class="graph-branches">
-            <view class="graph-branch" wx:for="{{mindMapSections}}" wx:key="name" wx:for-item="section">
+            <view class="graph-branch {{section.side}}" wx:for="{{mindMapSections}}" wx:key="name" wx:for-item="section">
               <view class="graph-line"></view>
-              <view class="graph-node">{{section.name}}</view>
+              <view class="graph-node-wrap">
+                <view class="graph-node">{{section.name}}</view>
+                <view class="graph-subnodes" wx:if="{{section.children && section.children.length > 0}}">
+                  <view class="graph-subnode" wx:for="{{section.children}}" wx:key="name" wx:for-item="item">
+                    {{item.name}}
+                  </view>
+                </view>
+              </view>
             </view>
           </view>
         </view>
@@ -152,6 +163,14 @@
           </view>
         </view>
       </view>
+    </view>
+
+    <view class="mermaid-card card" wx:if="{{note.mermaidMindMap}}">
+      <view class="preview-header">
+        <text class="preview-title">Mermaid 源码</text>
+        <text class="preview-more" bindtap="copyMermaid">复制</text>
+      </view>
+      <text class="mermaid-code">{{note.mermaidMindMap}}</text>
     </view>
     
     <!-- 无思维导图提示 -->

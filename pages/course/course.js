@@ -104,8 +104,10 @@ Page({
       return;
     }
     const latestNote = notes[0];
-    wx.navigateTo({
-      url: `/pages/review/review?noteId=${latestNote._id || latestNote.id}&action=generate`
+    const app = getApp();
+    app.globalData.generateExamNoteId = latestNote._id || latestNote.id;
+    wx.switchTab({
+      url: '/pages/review/review'
     });
   },
 

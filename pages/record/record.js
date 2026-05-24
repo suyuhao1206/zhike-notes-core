@@ -518,6 +518,22 @@ Page({
         note._id = savedNote._id;
       }
 
+      try {
+        wx.showLoading({ title: '生成脑图中...', mask: true });
+        const mindMapResult = await api.generateMindMap(transcribeResult, {
+          title: note.title || `${course.name} 录音笔记`
+        });
+        note.summary = mindMapResult.summary || note.summary || '';
+        note.tags = mindMapResult.tags || note.tags || [];
+        note.mindMap = mindMapResult.mindMap;
+        note.mermaidMindMap = mindMapResult.mermaid;
+        note.updateTime = new Date().toISOString();
+        await api.saveNote(note);
+      } catch (mindMapError) {
+        console.warn('录音脑图生成失败，已保留转写笔记:', mindMapError);
+      }
+      wx.hideLoading();
+
       this.updateRecordStatus(record.id, 'completed');
 
       const doneTitle = provider === 'coze' ? '转写完成（已切换 Coze）' : provider === 'mock' ? '转写完成（模拟结果）' : '转写完成';

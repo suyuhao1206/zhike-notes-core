@@ -1,9 +1,0 @@
-{
-  "name": "aiChat",
-  "version": "1.0.0",
-  "description": "AI 对话云函数，支持 RAG",
-  "main": "index.js",
-  "dependencies": {
-    "wx-server-sdk": "latest"
-  }
-}

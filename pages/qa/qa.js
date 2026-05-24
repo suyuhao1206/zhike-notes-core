@@ -2,6 +2,34 @@
 const api = require('../../api/api.js');
 const officialKB = require('../../knowledge/officialKnowledge.js');
 
+function getWelcomeMessage(noteId) {
+  return {
+    type: 'ai',
+    content: noteId
+      ? '你好！我是智课笔记的AI答疑助手。我已加载当前笔记内容，你可以基于笔记提问，我会帮你解答相关问题。'
+      : '你好！我是智课笔记的AI答疑助手。你可以向我提问任何学习相关的问题。',
+    time: getCurrentTimeText()
+  };
+}
+
+function getCurrentTimeText() {
+  const now = new Date();
+  return `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+}
+
+function cleanDisplayText(text) {
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g, block => block.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, ''))
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '• ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 Page({
   data: {
     noteId: null,
@@ -91,16 +119,14 @@ Page({
 
     if (history.length === 0) {
       // 添加欢迎消息
-      const welcomeMsg = {
-        type: 'ai',
-        content: noteId
-          ? '你好！我是智课笔记的AI答疑助手。我已加载当前笔记内容，你可以基于笔记提问，我会帮你解答相关问题。'
-          : '你好！我是智课笔记的AI答疑助手。你可以向我提问任何学习相关的问题。',
-        time: this.getCurrentTime()
-      };
-      this.setData({ messages: [welcomeMsg] });
+      this.setData({ messages: [getWelcomeMessage(noteId)] });
     } else {
-      this.setData({ messages: history });
+      this.setData({
+        messages: history.map(item => ({
+          ...item,
+          content: cleanDisplayText(item.content)
+        }))
+      });
     }
   },
 
@@ -145,7 +171,7 @@ Page({
 
     // 调用 AI API 获取回答
     try {
-      const answer = await this.callAIQA(inputValue);
+      const answer = cleanDisplayText(await this.callAIQA(inputValue));
 
       // 添加 AI 回复
       const aiMessage = {
@@ -198,11 +224,19 @@ Page({
     try {
       wx.showLoading({ title: 'AI思考中...', mask: true });
       
-      const result = await api.askQuestion(question, noteContext);
+      const result = await api.askQuestionWithRAG(question, {
+        noteId: this.data.noteId,
+        courseId: this.data.courseId || (this.data.note && this.data.note.courseId),
+        noteContext,
+        courseName
+      });
       
       wx.hideLoading();
       
-      const answer = result.answer || result.text || '抱歉，我暂时无法回答这个问题。';
+      const answer = cleanDisplayText(result.answer || result.text || '抱歉，我暂时无法回答这个问题。');
+      const references = result.references && result.references.length > 0
+        ? '\n\n依据：' + result.references.map(item => `[${item.index}] ${item.title}`).join('、')
+        : '';
       
       if (this.data.noteId && result.hasAI) {
         const noteHelper = require('../../utils/noteHelper.js');
@@ -212,7 +246,7 @@ Page({
         }, 'qa');
       }
       
-      return answer;
+      return `${answer}${references}`;
     } catch (error) {
       wx.hideLoading();
       console.error('AI答疑失败:', error);
@@ -223,8 +257,7 @@ Page({
 
   // 获取当前时间
   getCurrentTime() {
-    const now = new Date();
-    return `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+    return getCurrentTimeText();
   },
 
   // 快捷提问
@@ -241,8 +274,15 @@ Page({
       content: '确定要清空所有对话记录吗？',
       success: (res) => {
         if (res.confirm) {
-          this.setData({ messages: [] });
-          this.loadQAHistory();
+          const storageKey = this.data.noteId ? `qa_history_${this.data.noteId}` : 'qa_history_general';
+          wx.removeStorageSync(storageKey);
+          this.setData({
+            messages: [getWelcomeMessage(this.data.noteId)],
+            inputValue: '',
+            currentQuestion: null,
+            isSending: false
+          });
+          wx.showToast({ title: '已清空', icon: 'success' });
         }
       }
     });

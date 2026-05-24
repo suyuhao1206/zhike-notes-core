@@ -53,10 +53,19 @@
             <text class="label">正确答案：</text>
             <text class="text">{{item.correctAnswer}}</text>
           </view>
+          <view class="ai-analysis" wx:if="{{item.errorReason || item.fixStrategy}}">
+            <text class="label">AI诊断：</text>
+            <text class="text">{{item.errorReason}}</text>
+            <text class="text strategy" wx:if="{{item.fixStrategy}}">{{item.fixStrategy}}</text>
+          </view>
+          <view class="similar-list" wx:if="{{item.similarQuestions && item.similarQuestions.length > 0}}">
+            <text class="label">同类题：</text>
+            <text class="text">{{item.similarQuestions[0].question}}</text>
+          </view>
         </view>
 
         <view class="mistake-footer">
-          <text class="time">{{item.createTime}}</text>
+          <text class="time">{{item.dueText || item.createTime}}</text>
           <view class="actions">
             <block wx:if="{{!item.fixed}}">
               <button class="action-btn fix-btn" catchtap="markAsFixed" data-id="{{item._id || item.id}}">标记掌握</button>

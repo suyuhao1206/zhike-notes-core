@@ -1,5 +1,19 @@
 const api = require('../../api/api.js');
 
+function cleanDisplayText(text) {
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g, block => block.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, ''))
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '• ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 Page({
   data: {
     imagePath: '',
@@ -109,7 +123,7 @@ Page({
       wx.hideLoading();
 
       this.setData({
-        recognizedText: result.text || '识别失败，请重试',
+        recognizedText: cleanDisplayText(result.text || '识别失败，请重试'),
         isRecognizing: false,
         ocrNotice: result.isMock ? '未配置真实 OCR/视觉 Bot，当前显示的是示例整理结果；保存后仍可进入笔记、答疑和复习流程。' : ''
       });
@@ -136,98 +150,78 @@ Page({
   // 调用 OCR API
   callOCRAPI(filePath) {
     const config = api.getCozeConfig ? api.getCozeConfig() : getApp().globalData.cozeConfig;
+    const prompt = '请识别这张课堂图片中的文字、公式和题目，并整理成适合作为笔记保存的结构化内容。只输出识别结果、知识点、公式、题目解析和学习建议，不要输出链接。';
 
-    return new Promise((resolve, reject) => {
-      if (!config.token) {
-        console.log('Coze Token未配置，使用智能OCR模拟');
-        setTimeout(() => {
-          const mockResult = this.generateSmartOCRResult();
-          resolve({ text: mockResult, isMock: true });
-        }, 1000);
-        return;
+    const useMockResult = () => {
+      const mockResult = this.generateSmartOCRResult();
+      return Promise.resolve({ text: mockResult, isMock: true });
+    };
+
+    const fallbackToCoze = (sourceError) => {
+      if (sourceError) {
+        console.warn('小米OCR不可用，尝试使用Coze兜底:', sourceError);
       }
 
-      wx.uploadFile({
-        url: `${config.baseUrl}/files/upload`,
-        filePath: filePath,
-        name: 'file',
-        header: {
-          'Authorization': `Bearer ${config.token}`
-        },
-        success: (uploadRes) => {
-          try {
-            const data = JSON.parse(uploadRes.data);
-            if (data.code === 0 || data.id) {
-              const fileId = data.data?.id || data.id;
-              const botType = (config.bots || {}).ocrVision ? 'ocrVision' : 'noteSummary';
-              const botId = (config.bots || {})[botType];
+      return new Promise((resolve) => {
+        if (!config.token) {
+          console.warn('Coze Token未配置，使用智能OCR模拟');
+          useMockResult().then(resolve);
+          return;
+        }
 
-              if (!botId) {
-                console.log('Bot未配置，使用智能OCR模拟');
-                const mockResult = this.generateSmartOCRResult();
-                resolve({ text: mockResult, isMock: true });
+        wx.uploadFile({
+          url: `${config.baseUrl}/files/upload`,
+          filePath: filePath,
+          name: 'file',
+          header: {
+            'Authorization': `Bearer ${config.token}`
+          },
+          success: (uploadRes) => {
+            try {
+              const data = JSON.parse(uploadRes.data);
+              if (data.code === 0 || data.id) {
+                const fileId = data.data?.id || data.id;
+                const botType = (config.bots || {}).ocrVision ? 'ocrVision' : 'noteSummary';
+                const botId = (config.bots || {})[botType];
+
+                if (!botId) {
+                  console.warn('OCR/视觉 Bot未配置，使用智能OCR模拟');
+                  useMockResult().then(resolve);
+                  return;
+                }
+
+                api.callCozeBotWithImage(botType, prompt, fileId, { forceCoze: true })
+                  .then(result => {
+                    resolve({ text: result.text || result.answer || result.content || String(result || '') });
+                  })
+                  .catch(err => {
+                    console.warn('Coze OCR兜底失败，使用智能OCR模拟:', err);
+                    useMockResult().then(resolve);
+                  });
                 return;
               }
 
-              api.callCozeBotWithImage(botType, '请识别这张课堂图片中的文字、公式和题目，并整理成适合作为笔记保存的结构化内容。只输出识别结果、知识点、公式、题目解析和学习建议，不要输出链接。', fileId)
-                .then(result => {
-                  resolve({ text: result.text || result.answer || result.content || String(result || '') });
-                })
-                .catch(err => {
-                  console.warn('Coze V3 OCR调用失败，使用模拟结果', err);
-                  const mockResult = this.generateSmartOCRResult();
-                  resolve({ text: mockResult, isMock: true });
-                });
-              return;
-
-              wx.request({
-                url: `${config.baseUrl}/chat/completions`,
-                method: 'POST',
-                header: {
-                  'Authorization': `Bearer ${config.token}`,
-                  'Content-Type': 'application/json'
-                },
-                data: {
-                  bot_id: botId,
-                  user: 'user',
-                  query: `请识别图片中的文字内容并提取关键信息：file_id:${fileId}`,
-                  stream: false
-                },
-                success: (res) => {
-                  if (res.statusCode === 200 && res.data) {
-                    const content = res.data.choices?.[0]?.message?.content ||
-                                   res.data.choices?.[0]?.text ||
-                                   res.data.text ||
-                                   JSON.stringify(res.data);
-                    resolve({ text: content });
-                  } else {
-                    const mockResult = this.generateSmartOCRResult();
-                    resolve({ text: mockResult, isMock: true });
-                  }
-                },
-                fail: (err) => {
-                  console.warn('API调用失败，使用模拟结果:', err);
-                  const mockResult = this.generateSmartOCRResult();
-                  resolve({ text: mockResult, isMock: true });
-                }
-              });
-            } else {
-              const mockResult = this.generateSmartOCRResult();
-              resolve({ text: mockResult, isMock: true });
+              console.warn('Coze文件上传失败，使用智能OCR模拟:', data.msg || data);
+              useMockResult().then(resolve);
+            } catch (e) {
+              console.warn('Coze上传响应解析失败，使用智能OCR模拟:', e);
+              useMockResult().then(resolve);
             }
-          } catch (e) {
-            console.warn('解析失败，使用模拟结果:', e);
-            const mockResult = this.generateSmartOCRResult();
-            resolve({ text: mockResult, isMock: true });
+          },
+          fail: (err) => {
+            console.warn('Coze文件上传失败，使用智能OCR模拟:', err);
+            useMockResult().then(resolve);
           }
-        },
-        fail: (err) => {
-          console.warn('上传失败，使用模拟结果:', err);
-          const mockResult = this.generateSmartOCRResult();
-          resolve({ text: mockResult, isMock: true });
-        }
+        });
       });
-    });
+    };
+
+    if (!api.recognizeImageText) {
+      return fallbackToCoze(new Error('小米OCR接口不可用'));
+    }
+
+    return api.recognizeImageText(filePath, { prompt })
+      .catch(err => fallbackToCoze(err));
   },
 
   generateSmartOCRResult() {

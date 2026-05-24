@@ -4,14 +4,20 @@
 
 const DB = require('../utils/db.js');
 const { hmacSha1Base64 } = require('../utils/crypto.js');
+const officialKB = require('../knowledge/officialKnowledge.js');
 
 const XFYUN_BASE_URL = 'https://office-api-ist-dx.iflyaisol.com';
 
 function getAIConfig() {
   const app = getApp();
   return app.globalData.aiConfig || {
-    provider: 'coze',
+    provider: 'xiaomi',
     providers: {
+      xiaomi: {
+        baseUrl: 'https://token-plan-sgp.xiaomimimo.com/v1',
+        apiKey: '',
+        model: 'mimo-v2.5-pro'
+      },
       coze: { baseUrl: 'https://api.coze.cn/v1', apiKey: '', bots: {} }
     }
   };
@@ -19,12 +25,16 @@ function getAIConfig() {
 
 function getActiveProvider() {
   const aiConfig = getAIConfig();
-  return aiConfig.provider || 'coze';
+  return aiConfig.provider || 'xiaomi';
 }
 
 function getProviderConfig(provider) {
   const aiConfig = getAIConfig();
   return (aiConfig.providers && aiConfig.providers[provider]) || {};
+}
+
+function normalizeBaseUrl(baseUrl = '') {
+  return String(baseUrl || '').trim().replace(/\/+$/, '');
 }
 
 // 兼容旧代码：返回 coze 配置结构
@@ -67,7 +77,10 @@ function parseCozeResponse(response) {
   // 处理 chat.completions 响应格式
   if (response.choices && response.choices[0]) {
     const choice = response.choices[0];
-    const content = choice.message?.content || choice.text || '';
+    const contentValue = choice.message?.content || choice.message?.reasoning_content || choice.text || '';
+    const content = Array.isArray(contentValue)
+      ? contentValue.map(item => item.text || item.content || '').filter(Boolean).join('\n')
+      : contentValue;
 
     // 尝试解析 JSON
     try {
@@ -94,6 +107,32 @@ function parseCozeResponse(response) {
   }
 
   return response;
+}
+
+function normalizeCompatibleModel(provider, model) {
+  const value = String(model || '').trim();
+  if (provider === 'xiaomi') {
+    return (value || 'mimo-v2.5-pro').toLowerCase();
+  }
+  return value;
+}
+
+function getResponseErrorMessage(data) {
+  if (!data) return '';
+  if (typeof data === 'string') return data;
+  if (typeof data.error === 'string') return data.error;
+  return data.msg || data.message || (data.error && data.error.message) || '';
+}
+
+function getChatRequestShape(data = {}) {
+  return {
+    model: data.model,
+    stream: data.stream,
+    temperature: data.temperature,
+    hasMaxTokens: Object.prototype.hasOwnProperty.call(data, 'max_tokens'),
+    hasMaxCompletionTokens: Object.prototype.hasOwnProperty.call(data, 'max_completion_tokens'),
+    messageCount: Array.isArray(data.messages) ? data.messages.length : 0
+  };
 }
 
 function parseJsonFromText(text) {
@@ -298,6 +337,320 @@ function normalizeFlashcardList(result) {
   return [];
 }
 
+function getLLMText(result) {
+  if (!result) return '';
+  if (typeof result === 'string') return result;
+  return result.text || result.answer || result.content || '';
+}
+
+function parseStructuredResult(result) {
+  if (!result) return null;
+  if (typeof result === 'object' && !result.text && !result.answer && !result.content) {
+    return result;
+  }
+  const text = getLLMText(result);
+  return parseJsonFromText(text);
+}
+
+function normalizeMindMapChildren(children) {
+  if (!Array.isArray(children)) return [];
+  return children
+    .map(item => {
+      if (typeof item === 'string') {
+        return { name: item, children: [] };
+      }
+      return {
+        name: item.name || item.title || item.text || item.label || '知识点',
+        children: normalizeMindMapChildren(item.children || item.items || item.points || [])
+      };
+    })
+    .filter(item => item.name);
+}
+
+function sanitizeMermaidText(text) {
+  return String(text || '')
+    .replace(/[()\[\]{}"<>:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 36) || '知识点';
+}
+
+function buildMermaidMindMap(mindMap) {
+  const title = sanitizeMermaidText((mindMap && mindMap.title) || '课程笔记');
+  const lines = ['mindmap', `  root((${title}))`];
+  const appendNode = (node, depth) => {
+    const indent = '  '.repeat(depth);
+    lines.push(`${indent}${sanitizeMermaidText(node.name)}`);
+    (node.children || []).slice(0, 6).forEach(child => appendNode(child, depth + 1));
+  };
+  ((mindMap && mindMap.children) || []).slice(0, 8).forEach(child => appendNode(child, 2));
+  return lines.join('\n');
+}
+
+function buildFallbackMindMap(content, fallbackTitle = '课程笔记') {
+  const lines = String(content || '')
+    .split(/[\n。！？!?；;]+/)
+    .map(line => line.replace(/^[-*\d.、\s]+/, '').trim())
+    .filter(line => line.length > 6)
+    .slice(0, 12);
+
+  const children = lines.length > 0
+    ? lines.map(line => ({ name: line.slice(0, 32), children: [] }))
+    : [
+      { name: '核心概念', children: [] },
+      { name: '重要公式', children: [] },
+      { name: '高频考点', children: [] }
+    ];
+
+  const mindMap = { title: fallbackTitle, children };
+  return {
+    summary: lines.slice(0, 3).join('；') || '已根据笔记内容生成知识结构。',
+    tags: children.slice(0, 5).map(item => item.name),
+    mindMap,
+    mermaid: buildMermaidMindMap(mindMap)
+  };
+}
+
+function normalizeMindMapResult(result, content, fallbackTitle = '课程笔记') {
+  const parsed = parseStructuredResult(result) || result || {};
+  const fallback = buildFallbackMindMap(content, fallbackTitle);
+  const rawMindMap = parsed.mindMap || parsed.mindmap || parsed.structure || parsed;
+  const children = normalizeMindMapChildren(rawMindMap.children || rawMindMap.nodes || rawMindMap.items || []);
+  const mindMap = {
+    title: rawMindMap.title || rawMindMap.name || fallbackTitle,
+    children: children.length > 0 ? children : fallback.mindMap.children
+  };
+
+  return {
+    summary: parsed.summary || parsed.overview || fallback.summary,
+    tags: Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : fallback.tags,
+    mindMap,
+    mermaid: parsed.mermaid || parsed.mermaidMindMap || buildMermaidMindMap(mindMap)
+  };
+}
+
+function tokenizeForSearch(text) {
+  const rawTokens = String(text || '')
+    .toLowerCase()
+    .match(/[a-z0-9]+|[\u4e00-\u9fa5]{2,}/g) || [];
+  const tokens = [];
+  rawTokens.forEach(token => {
+    tokens.push(token);
+    if (/^[\u4e00-\u9fa5]+$/.test(token) && token.length > 2) {
+      for (let i = 0; i < token.length - 1; i++) {
+        tokens.push(token.slice(i, i + 2));
+      }
+    }
+  });
+  return Array.from(new Set(tokens.filter(token => token.length > 1)));
+}
+
+function chunkDocument(doc) {
+  const content = String(doc.content || '').trim();
+  if (!content) return [];
+  const parts = content
+    .replace(/[。！？!?；;]/g, '$&\n')
+    .split(/\n+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+
+  const chunks = [];
+  let buffer = '';
+  parts.forEach(part => {
+    if ((buffer + part).length > 420 && buffer) {
+      chunks.push(buffer);
+      buffer = part;
+    } else {
+      buffer = buffer ? `${buffer}\n${part}` : part;
+    }
+  });
+  if (buffer) chunks.push(buffer);
+
+  return chunks.map((chunk, index) => ({
+    id: `${doc.id || doc.title || 'doc'}_${index}`,
+    title: doc.title || '课程资料',
+    sourceType: doc.sourceType || 'note',
+    content: chunk
+  }));
+}
+
+function scoreChunk(queryTokens, chunk) {
+  const text = String(chunk.content || '').toLowerCase();
+  let score = 0;
+  queryTokens.forEach(token => {
+    if (text.includes(token)) score += token.length > 2 ? 3 : 1;
+  });
+  if (chunk.sourceType === 'currentNote') score += 1;
+  return score;
+}
+
+async function collectCourseKnowledge(options = {}) {
+  const { noteId, courseId, noteContext = '' } = options;
+  const docs = [];
+  let targetCourseId = courseId || '';
+  let courseName = options.courseName || '';
+
+  if (noteId) {
+    const note = await getNoteById(noteId);
+    if (note) {
+      targetCourseId = targetCourseId || note.courseId || '';
+      courseName = courseName || note.courseName || '';
+      docs.push({
+        id: note._id || note.id || noteId,
+        title: note.title || '当前笔记',
+        content: note.content || '',
+        sourceType: 'currentNote'
+      });
+    }
+  }
+
+  if (targetCourseId) {
+    const notes = await getNotes(targetCourseId);
+    (notes || []).forEach(note => {
+      const id = note._id || note.id || '';
+      if (noteId && String(id) === String(noteId)) return;
+      docs.push({
+        id,
+        title: note.title || '课程笔记',
+        content: note.content || '',
+        sourceType: 'note'
+      });
+      if (!courseName && note.courseName) courseName = note.courseName;
+    });
+  }
+
+  if (!targetCourseId && !noteId) {
+    const notes = await getNotes();
+    (notes || []).slice(0, 80).forEach(note => {
+      docs.push({
+        id: note._id || note.id || '',
+        title: note.title || '课程笔记',
+        content: note.content || '',
+        sourceType: 'note'
+      });
+      if (!courseName && note.courseName) courseName = note.courseName;
+    });
+  }
+
+  if (!targetCourseId && noteContext) {
+    docs.push({
+      id: 'provided_context',
+      title: '当前上下文',
+      content: noteContext,
+      sourceType: 'currentNote'
+    });
+  }
+
+  if (courseName && officialKB && officialKB.getByCourse) {
+    const officialItems = officialKB.getByCourse(courseName) || [];
+    officialItems.forEach((item, index) => {
+      docs.push({
+        id: `official_${index}`,
+        title: item.title || `${courseName}资料`,
+        content: item.content || '',
+        sourceType: 'official'
+      });
+    });
+  }
+
+  return { docs, courseName, courseId: targetCourseId };
+}
+
+async function retrieveCourseSnippets(question, options = {}) {
+  const { docs, courseName, courseId } = await collectCourseKnowledge(options);
+  const queryTokens = tokenizeForSearch(question);
+  const chunks = [];
+  docs.forEach(doc => chunks.push(...chunkDocument(doc)));
+
+  const scored = chunks
+    .map(chunk => ({ ...chunk, score: scoreChunk(queryTokens, chunk) }))
+    .filter(chunk => chunk.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const selected = (scored.length > 0 ? scored : chunks)
+    .slice(0, options.topK || 5)
+    .map((chunk, index) => ({
+      index: index + 1,
+      title: chunk.title,
+      sourceType: chunk.sourceType,
+      content: chunk.content.slice(0, 520),
+      score: chunk.score || 0
+    }));
+
+  return {
+    courseName,
+    courseId,
+    snippets: selected,
+    hasKnowledge: selected.length > 0
+  };
+}
+
+function getNextReviewAt(stage = 0, status = 'new') {
+  const intervals = status === 'difficult'
+    ? [1, 2, 4, 7, 15, 30]
+    : status === 'uncertain'
+      ? [1, 2, 4, 7, 15, 30]
+      : [1, 3, 7, 15, 30, 60];
+  const safeStage = Math.max(0, Math.min(stage, intervals.length - 1));
+  const next = new Date();
+  next.setDate(next.getDate() + intervals[safeStage]);
+  return {
+    reviewStage: Math.min(safeStage + 1, intervals.length - 1),
+    intervalDays: intervals[safeStage],
+    nextReviewAt: next.toISOString()
+  };
+}
+
+function formatDateText(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '';
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}-${day}`;
+}
+
+function normalizeMistakeAnalysis(result, fallback) {
+  const parsed = parseStructuredResult(result) || {};
+  const similarQuestions = Array.isArray(parsed.similarQuestions)
+    ? parsed.similarQuestions
+    : Array.isArray(parsed.similar)
+      ? parsed.similar
+      : fallback.similarQuestions;
+
+  return {
+    errorReason: parsed.errorReason || parsed.reason || fallback.errorReason,
+    fixStrategy: parsed.fixStrategy || parsed.strategy || fallback.fixStrategy,
+    similarQuestions: similarQuestions.slice(0, 3).map((item, index) => {
+      if (typeof item === 'string') {
+        return { question: item, answer: '', explanation: '' };
+      }
+      return {
+        question: item.question || item.content || `同类题 ${index + 1}`,
+        answer: item.answer || item.correctAnswer || '',
+        explanation: item.explanation || item.analysis || ''
+      };
+    }),
+    reviewHint: parsed.reviewHint || fallback.reviewHint
+  };
+}
+
+function makeFallbackMistakeAnalysis(mistake = {}) {
+  const correctAnswer = mistake.correctAnswer || mistake.answer || '';
+  return {
+    errorReason: '可能是概念边界、题干关键词或公式条件没有对齐。',
+    fixStrategy: '先回看对应笔记，再把题干条件、解题步骤和正确答案逐项对照。',
+    similarQuestions: [
+      {
+        question: `请围绕「${String(mistake.question || '').slice(0, 24)}」重新解释关键概念。`,
+        answer: correctAnswer,
+        explanation: '同类题用于检查是否真正理解原题所考知识点。'
+      }
+    ],
+    reviewHint: '建议在明天进行第一次复习。'
+  };
+}
+
 function sameId(a, b) {
   return String(a || '') === String(b || '');
 }
@@ -318,7 +671,7 @@ function callCozeBot(botType, query, options = {}) {
 
 function callCozeBotWithImage(botType, query, fileId, options = {}) {
   const provider = getActiveProvider();
-  if (provider !== 'coze') {
+  if (provider !== 'coze' && !options.forceCoze) {
     return callCompatibleLLM(`${query}\n\n图片文件ID：${fileId}`, options);
   }
 
@@ -512,39 +865,253 @@ function fetchV3Messages(apiKey, chatId, conversationId, resolve, reject) {
 }
 
 function callCompatibleLLM(query, options = {}) {
-  const provider = getActiveProvider();
+  const provider = options.provider || getActiveProvider();
   const config = getProviderConfig(provider);
 
-  if (!config.baseUrl || !config.apiKey || !config.model) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+
+  if (!baseUrl || !config.apiKey || !config.model) {
     return Promise.reject(new Error('当前模型提供商配置不完整'));
   }
 
+  const model = normalizeCompatibleModel(provider, config.model);
+  const tokenLimit = options.maxCompletionTokens || options.maxTokens || options.max_tokens || 2000;
+  const data = {
+    model,
+    temperature: options.temperature || 0.3,
+    messages: [
+      { role: 'system', content: options.systemPrompt || '你是学习助手，请输出清晰、结构化内容。' },
+      { role: 'user', content: query }
+    ]
+  };
+
+  if (provider === 'xiaomi') {
+    data.max_completion_tokens = tokenLimit;
+    data.stream = false;
+  } else {
+    data.max_tokens = tokenLimit;
+  }
+
   return new Promise((resolve, reject) => {
-    wx.request({
-      url: `${config.baseUrl}/chat/completions`,
-      method: 'POST',
-      header: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      data: {
-        model: config.model,
-        temperature: options.temperature || 0.3,
-        messages: [
-          { role: 'system', content: options.systemPrompt || '你是学习助手，请输出清晰、结构化内容。' },
-          { role: 'user', content: query }
-        ]
-      },
-      success: (res) => {
-        if (res.statusCode === 200 && res.data) {
-          resolve(parseCozeResponse(res.data));
-        } else {
-          reject(new Error((res.data && (res.data.msg || (res.data.error && res.data.error.message))) || '请求失败'));
-        }
-      },
-      fail: reject
+    const sendRequest = (requestData, retried = false) => {
+      wx.request({
+        url: `${baseUrl}/chat/completions`,
+        method: 'POST',
+        header: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        data: requestData,
+        timeout: options.timeout || 60000,
+        success: (res) => {
+          if (res.statusCode === 200 && res.data) {
+            resolve(parseCozeResponse(res.data));
+          } else {
+            const errorMessage = getResponseErrorMessage(res.data);
+            if (provider === 'xiaomi' && !retried && res.statusCode === 400 && /param/i.test(errorMessage)) {
+              const fallbackData = {
+                ...data,
+                max_tokens: tokenLimit
+              };
+              delete fallbackData.max_completion_tokens;
+              console.warn('小米 MiMo 参数兼容重试：max_completion_tokens -> max_tokens');
+              sendRequest(fallbackData, true);
+              return;
+            }
+            console.error('兼容模型请求失败:', {
+              provider,
+              model,
+              statusCode: res.statusCode,
+              request: getChatRequestShape(requestData),
+              response: res.data
+            });
+            reject(new Error(errorMessage || '请求失败'));
+          }
+        },
+        fail: reject
+      });
+    };
+
+    sendRequest(data);
+  });
+}
+
+function getImageMimeType(filePath = '') {
+  const cleanPath = String(filePath || '').split('?')[0].toLowerCase();
+  if (cleanPath.endsWith('.png')) return 'image/png';
+  if (cleanPath.endsWith('.webp')) return 'image/webp';
+  if (cleanPath.endsWith('.gif')) return 'image/gif';
+  return 'image/jpeg';
+}
+
+function getXiaomiVisionModelCandidates(config = {}) {
+  const candidates = [
+    config.visionModel || 'mimo-v2.5',
+    'mimo-v2-omni',
+    config.model
+  ];
+  const seen = new Set();
+  return candidates
+    .map(model => normalizeCompatibleModel('xiaomi', model))
+    .filter(model => {
+      if (!model || seen.has(model)) return false;
+      seen.add(model);
+      return true;
+    });
+}
+
+function compressImageForVision(filePath) {
+  return new Promise(resolve => {
+    if (!wx.compressImage) {
+      resolve(filePath);
+      return;
+    }
+
+    wx.compressImage({
+      src: filePath,
+      quality: 75,
+      success: res => resolve(res.tempFilePath || filePath),
+      fail: err => {
+        console.warn('图片压缩失败，使用原图识别:', err);
+        resolve(filePath);
+      }
     });
   });
+}
+
+function readLocalFileAsBase64(filePath) {
+  return new Promise((resolve, reject) => {
+    if (!wx.getFileSystemManager) {
+      reject(new Error('当前基础库不支持读取本地图片文件'));
+      return;
+    }
+
+    wx.getFileSystemManager().readFile({
+      filePath,
+      encoding: 'base64',
+      success: res => resolve(String(res.data || '')),
+      fail: err => reject(new Error(err.errMsg || '读取图片文件失败'))
+    });
+  });
+}
+
+function callXiaomiVisionOCR(filePath, options = {}) {
+  const provider = 'xiaomi';
+  const config = getProviderConfig(provider);
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+
+  if (!baseUrl || !config.apiKey) {
+    return Promise.reject(new Error('小米 MiMo 配置不完整，请先在设置页填写 API Key'));
+  }
+
+  const prompt = options.prompt || '请识别这张课堂图片中的文字、公式和题目，并整理成适合作为笔记保存的结构化内容。只输出识别结果、知识点、公式、题目解析和学习建议，不要输出链接。';
+  const tokenLimit = options.maxCompletionTokens || options.maxTokens || 2200;
+  const modelCandidates = getXiaomiVisionModelCandidates(config);
+
+  if (modelCandidates.length === 0) {
+    return Promise.reject(new Error('小米 MiMo 视觉模型未配置'));
+  }
+
+  return compressImageForVision(filePath)
+    .then(compressedPath => readLocalFileAsBase64(compressedPath).then(base64 => ({
+      compressedPath,
+      base64
+    })))
+    .then(({ compressedPath, base64 }) => {
+      if (!base64) {
+        throw new Error('图片内容为空，无法识别');
+      }
+
+      const imageUrl = `data:${getImageMimeType(compressedPath)};base64,${base64}`;
+      const createData = (model, useMaxTokens = false) => ({
+        model,
+        temperature: options.temperature || 0.1,
+        stream: false,
+        messages: [
+          {
+            role: 'system',
+            content: '你是课堂图片 OCR 与学习笔记整理助手，优先忠实识别图片文字、公式、题目和板书结构。'
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: { url: imageUrl }
+              }
+            ]
+          }
+        ]
+      });
+
+      return new Promise((resolve, reject) => {
+        let modelIndex = 0;
+
+        const sendRequest = (model, useMaxTokens = false) => {
+          const requestData = createData(model, useMaxTokens);
+          if (useMaxTokens) {
+            requestData.max_tokens = tokenLimit;
+          } else {
+            requestData.max_completion_tokens = tokenLimit;
+          }
+
+          wx.request({
+            url: `${baseUrl}/chat/completions`,
+            method: 'POST',
+            header: {
+              'Authorization': `Bearer ${config.apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            data: requestData,
+            timeout: options.timeout || 90000,
+            success: res => {
+              if (res.statusCode === 200 && res.data) {
+                const parsed = parseCozeResponse(res.data);
+                const text = getLLMText(parsed) || stringifyContent(parsed);
+                if (text) {
+                  resolve({ text, provider: 'xiaomi' });
+                } else {
+                  reject(new Error('小米视觉识别未返回有效文本'));
+                }
+                return;
+              }
+
+              const errorMessage = getResponseErrorMessage(res.data);
+              if (!useMaxTokens && res.statusCode === 400 && /param|max_completion_tokens|max_tokens/i.test(errorMessage)) {
+                console.warn('小米视觉 OCR 参数兼容重试：max_completion_tokens -> max_tokens');
+                sendRequest(model, true);
+                return;
+              }
+
+              const canTryNextModel = res.statusCode === 404 || /model|not found|unsupported|vision|image/i.test(errorMessage);
+              if (canTryNextModel && modelIndex < modelCandidates.length - 1) {
+                modelIndex += 1;
+                const nextModel = modelCandidates[modelIndex];
+                console.warn(`小米视觉模型 ${model} 不可用，尝试 ${nextModel}`);
+                sendRequest(nextModel, false);
+                return;
+              }
+
+              console.error('小米视觉 OCR 请求失败:', {
+                model,
+                statusCode: res.statusCode,
+                request: getChatRequestShape(requestData),
+                response: res.data
+              });
+              reject(new Error(errorMessage || '小米视觉识别请求失败'));
+            },
+            fail: reject
+          });
+        };
+
+        sendRequest(modelCandidates[modelIndex], false);
+      });
+    });
+}
+
+function recognizeImageText(filePath, options = {}) {
+  return callXiaomiVisionOCR(filePath, options);
 }
 
 /**
@@ -950,6 +1517,53 @@ ${content}
 }
 
 /**
+ * 生成结构化脑图和 Mermaid mindmap。
+ */
+function generateMindMap(content, options = {}) {
+  const provider = 'xiaomi';
+  const config = getProviderConfig(provider);
+  const title = options.title || '课程笔记';
+
+  if (!config.apiKey || !config.baseUrl || !config.model) {
+    return Promise.resolve(buildFallbackMindMap(content, title));
+  }
+
+  const query = `请把下面的课堂笔记/录音转写整理为学习脑图，并同时生成 Mermaid mindmap 代码。
+
+笔记标题：${title}
+
+内容：
+${String(content || '').slice(0, 12000)}
+
+要求：
+1. 提取 5-8 个一级知识点，每个一级知识点保留 2-5 个二级要点。
+2. 公式、定义、高频考点必须保留。
+3. Mermaid 使用 mindmap 语法，节点文字不要带括号、引号或冒号。
+4. 只返回 JSON，不要 Markdown 代码块。
+
+JSON 格式：
+{
+  "summary": "100字以内摘要",
+  "tags": ["标签1", "标签2"],
+  "mindMap": {
+    "title": "标题",
+    "children": [
+      { "name": "一级知识点", "children": [{ "name": "二级要点", "children": [] }] }
+    ]
+  },
+  "mermaid": "mindmap\\n  root((标题))\\n    一级知识点\\n      二级要点"
+}`;
+
+  return callCompatibleLLM(query, {
+    ...options,
+    provider,
+    temperature: 0.2,
+    maxTokens: 2200,
+    systemPrompt: '你是课程笔记结构化专家，只输出可解析 JSON。'
+  }).then(result => normalizeMindMapResult(result, content, title));
+}
+
+/**
  * AI 答疑 API
  * @param {string} question 问题
  * @param {string} noteContext 笔记上下文（可选）
@@ -993,16 +1607,85 @@ ${noteContext.substring(0, 500)}
   }));
 }
 
+/**
+ * 基于课程资料检索增强答疑。只允许使用检索到的笔记/官方资料作答。
+ */
+async function askQuestionWithRAG(question, options = {}) {
+  const retrieval = await retrieveCourseSnippets(question, options);
+
+  if (!retrieval.hasKnowledge) {
+    return {
+      answer: '当前课程知识库里没有检索到足够依据，建议先补充相关笔记后再提问。',
+      references: [],
+      hasAI: false,
+      hasRAG: true
+    };
+  }
+
+  const referencesText = retrieval.snippets
+    .map(item => `[${item.index}] ${item.title}\n${item.content}`)
+    .join('\n\n');
+
+  const provider = getActiveProvider();
+  const config = getProviderConfig(provider);
+  const botId = (config.bots || {}).qaAssistant;
+
+  if (!config.apiKey || (provider === 'coze' && !botId)) {
+    const localAnswer = generateSmartMockAnswer(question, referencesText);
+    return {
+      answer: cleanAnswer(localAnswer),
+      references: retrieval.snippets,
+      hasAI: false,
+      hasRAG: true
+    };
+  }
+
+  const query = `问题：${question}
+
+课程资料片段：
+${referencesText}
+
+请严格依据资料片段回答：
+1. 如果资料片段无法支持答案，请明确说“当前笔记未覆盖”。
+2. 不要编造资料外的事实。
+3. 回答控制在 300 字以内。
+4. 使用纯文本回答，不要使用 Markdown 标题、加粗、代码块或表格。
+5. 不要在正文里重复输出“依据”或“参考资料”。`;
+
+  const result = await callCozeBot('qaAssistant', query, {
+    ...options,
+    temperature: 0.1,
+    maxTokens: 900,
+    systemPrompt: '你是 RAG 学习答疑助手，只能依据给定资料回答，不能编造。'
+  });
+
+  return {
+    answer: cleanAnswer(getLLMText(result)),
+    references: retrieval.snippets,
+    hasAI: true,
+    hasRAG: true
+  };
+}
+
 function cleanAnswer(text) {
   if (!text) return text;
   
   let cleaned = text
     .replace(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi, '[链接已移除]')
     .replace(/www\.[^\s<>"{}|\\^`\[\]]+/gi, '[链接已移除]')
+    .replace(/```[\s\S]*?```/g, block => block.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, ''))
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
     .replace(/参考.*?:\s*/gi, '')
     .replace(/参考资料.*?\n/gi, '')
     .replace(/推荐阅读.*?\n/gi, '')
-    .replace(/相关链接.*?\n/gi, '');
+    .replace(/相关链接.*?\n/gi, '')
+    .replace(/^\s*[-*+]\s+/gm, '• ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n');
   
   return cleaned.trim();
 }
@@ -1218,6 +1901,73 @@ ${content}
 }
 
 /**
+ * AI 分析错题原因、生成同类题，并给出艾宾浩斯复习时间。
+ */
+async function analyzeMistake(mistake, context = '', options = {}) {
+  const fallback = makeFallbackMistakeAnalysis(mistake);
+  const schedule = getNextReviewAt(0, 'difficult');
+  const provider = getActiveProvider();
+  const config = getProviderConfig(provider);
+  const botId = (config.bots || {}).qaAssistant;
+
+  if (!config.apiKey || (provider === 'coze' && !botId)) {
+    return {
+      ...fallback,
+      ...schedule,
+      nextReviewText: formatDateText(schedule.nextReviewAt)
+    };
+  }
+
+  const query = `请分析这道错题，并生成错题闭环数据。
+
+课程资料：
+${String(context || '').slice(0, 6000)}
+
+错题：
+${mistake.question || ''}
+
+学生答案：
+${mistake.userAnswer || mistake.wrongAnswer || ''}
+
+正确答案：
+${mistake.correctAnswer || mistake.answer || ''}
+
+解析：
+${mistake.explanation || ''}
+
+要求只返回 JSON：
+{
+  "errorReason": "错误原因，指出概念/公式/审题/步骤中的具体问题",
+  "fixStrategy": "下一次怎么避免",
+  "reviewHint": "复习提醒话术",
+  "similarQuestions": [
+    { "question": "同类题", "answer": "答案", "explanation": "解析" }
+  ]
+}`;
+
+  try {
+    const result = await callCozeBot('qaAssistant', query, {
+      ...options,
+      temperature: 0.2,
+      maxTokens: 1500,
+      systemPrompt: '你是错题诊断老师，只输出可解析 JSON。'
+    });
+    return {
+      ...normalizeMistakeAnalysis(result, fallback),
+      ...schedule,
+      nextReviewText: formatDateText(schedule.nextReviewAt)
+    };
+  } catch (error) {
+    console.warn('错题 AI 分析失败，使用本地闭环数据:', error);
+    return {
+      ...fallback,
+      ...schedule,
+      nextReviewText: formatDateText(schedule.nextReviewAt)
+    };
+  }
+}
+
+/**
  * 保存课程
  * @param {object} course 课程信息
  */
@@ -1313,7 +2063,20 @@ async function deleteNote(noteId) {
  * @param {object} mistake 错题信息
  */
 async function saveMistake(mistake) {
-  const data = { ...mistake };
+  const schedule = mistake.nextReviewAt ? {} : getNextReviewAt(0, 'difficult');
+  const data = {
+    createTime: new Date().toISOString(),
+    fixed: false,
+    reviewStage: 0,
+    ...schedule,
+    ...mistake
+  };
+  if (!data.wrongAnswer && data.userAnswer) {
+    data.wrongAnswer = data.userAnswer;
+  }
+  if (!data.nextReviewText && data.nextReviewAt) {
+    data.nextReviewText = formatDateText(data.nextReviewAt);
+  }
   if (mistake.id && !mistake._id) {
     data.id = mistake.id;
   }
@@ -1421,6 +2184,7 @@ function upsertLocalFlashcard(card) {
 async function saveFlashcards(cards, meta = {}) {
   const savedCards = [];
   const now = new Date().toISOString();
+  const initialSchedule = getNextReviewAt(0, 'new');
 
   for (let index = 0; index < (cards || []).length; index++) {
     const card = cards[index] || {};
@@ -1433,6 +2197,10 @@ async function saveFlashcards(cards, meta = {}) {
       courseId: card.courseId || meta.courseId || '',
       courseName: card.courseName || meta.courseName || '',
       noteTitle: card.noteTitle || meta.noteTitle || '',
+      reviewStage: card.reviewStage || 0,
+      intervalDays: card.intervalDays || initialSchedule.intervalDays,
+      nextReviewAt: card.nextReviewAt || now,
+      nextReviewText: card.nextReviewText || '今天',
       createTime: card.createTime || now,
       updateTime: now
     };
@@ -1481,17 +2249,29 @@ async function deleteFlashcard(flashcardId) {
   return await DB.remove('flashcards', flashcardId);
 }
 
+function planFlashcardReview(card = {}, status = 'new') {
+  const schedule = getNextReviewAt(card.reviewStage || 0, status);
+  return {
+    ...schedule,
+    nextReviewText: formatDateText(schedule.nextReviewAt)
+  };
+}
+
 module.exports = {
   getAIConfig,
   getCozeConfig,
   callCozeBot,
   callCozeBotWithImage,
   transcribeAudio,
+  recognizeImageText,
   summarizeNote,
+  generateMindMap,
   askQuestion,
+  askQuestionWithRAG,
   generateExam,
   generateFlashcards,
   generateEmergency,
+  analyzeMistake,
 
   saveCourse,
   getCourses,
@@ -1511,5 +2291,6 @@ module.exports = {
   saveFlashcards,
   getFlashcards,
   getFlashcardsByCourse,
+  planFlashcardReview,
   deleteFlashcard
 };

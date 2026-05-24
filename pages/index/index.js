@@ -7,7 +7,15 @@ Page({
     isLoggedIn: false,
     courseList: [],
     recentNotes: [],
-    showQuickMenu: false
+    showQuickMenu: false,
+    coreCapabilities: [
+      { id: 'recordMindMap', icon: '🎙️', name: '录音转脑图', desc: 'ASR 转写后自动生成知识脑图' },
+      { id: 'ragQA', icon: '💬', name: 'RAG 精准答疑', desc: '基于课程笔记检索后回答' },
+      { id: 'exam', icon: '📝', name: '一键复习卷', desc: '自动生成选择/填空/简答题' },
+      { id: 'mistakes', icon: '⭕', name: '错题闭环', desc: 'AI 诊断、同类题与复习提醒' },
+      { id: 'emergency', icon: '🚨', name: '急救模式', desc: '压缩整门课高频考点' },
+      { id: 'flashcard', icon: '📚', name: '背诵卡片', desc: '按遗忘曲线推送复习' }
+    ]
   },
 
   onLoad() {
@@ -153,6 +161,38 @@ Page({
     wx.navigateTo({
       url: '/pages/notes/notes'
     });
+  },
+
+  openCapability(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!this.data.isLoggedIn) {
+      wx.showToast({ title: '请先登录', icon: 'none' });
+      return;
+    }
+
+    if (id === 'recordMindMap') {
+      wx.switchTab({ url: '/pages/record/record' });
+      return;
+    }
+    if (id === 'ragQA') {
+      wx.navigateTo({ url: '/pages/qa/qa' });
+      return;
+    }
+    if (id === 'mistakes') {
+      wx.navigateTo({ url: '/pages/mistakes/mistakes' });
+      return;
+    }
+    if (id === 'flashcard') {
+      wx.navigateTo({ url: '/pages/flashcard/flashcard' });
+      return;
+    }
+    if (id === 'emergency' || id === 'exam') {
+      getApp().globalData.reviewPresetMode = id;
+      wx.switchTab({
+        url: '/pages/review/review'
+      });
+      return;
+    }
   },
 
   // 查看全部笔记

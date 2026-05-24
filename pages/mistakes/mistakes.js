@@ -32,14 +32,17 @@ Page({
     try {
       const mistakes = (await api.getMistakes()).map(item => ({
         ...item,
-        id: item._id || item.id
+        id: item._id || item.id,
+        dueText: item.nextReviewAt
+          ? (new Date(item.nextReviewAt).getTime() <= Date.now() ? '今日复习' : `下次 ${item.nextReviewText || ''}`)
+          : '待安排'
       }));
 
       // 更新统计
       const stats = {
         total: mistakes.length,
         fixed: mistakes.filter(m => m.fixed).length,
-        pending: mistakes.filter(m => !m.fixed).length
+        pending: mistakes.filter(m => !m.fixed && (!m.nextReviewAt || new Date(m.nextReviewAt).getTime() <= Date.now())).length
       };
 
       // 按时间排序（最新的在前面）
@@ -108,8 +111,7 @@ Page({
 
     wx.showModal({
       title: '错题详情',
-      content: `${mistake.question || ''}\n\n你的答案：${mistake.userAnswer || mistake.wrongAnswer || ''}\n正确答案：${mistake.correctAnswer || mistake.answer || ''}\n\n解析：${mistake.explanation || '暂无解析'}`,
-      content: `${mistake.question || ''}\n\n你的答案：${mistake.userAnswer || mistake.wrongAnswer || ''}\n正确答案：${mistake.correctAnswer || mistake.answer || ''}\n\n解析：${mistake.explanation || '暂无解析'}`,
+      content: `${mistake.question || ''}\n\n你的答案：${mistake.userAnswer || mistake.wrongAnswer || ''}\n正确答案：${mistake.correctAnswer || mistake.answer || ''}\n\n解析：${mistake.explanation || '暂无解析'}\n\nAI诊断：${mistake.errorReason || '暂无'}\n建议：${mistake.fixStrategy || '暂无'}\n复习：${mistake.dueText || '待安排'}`,
       showCancel: false
     });
   },
@@ -178,7 +180,9 @@ Page({
 
   // 开始错题复习
   startReview() {
-    const pendingMistakes = this.data.mistakes.filter(m => !m.fixed);
+    const pendingMistakes = this.data.mistakes.filter(m =>
+      !m.fixed && (!m.nextReviewAt || new Date(m.nextReviewAt).getTime() <= Date.now())
+    );
 
     if (pendingMistakes.length === 0) {
       wx.showToast({
@@ -188,8 +192,9 @@ Page({
       return;
     }
 
-    wx.navigateTo({
-      url: '/pages/review/review?mode=mistakes'
+    getApp().globalData.reviewPresetMode = 'mistakes';
+    wx.switchTab({
+      url: '/pages/review/review'
     });
   },
 

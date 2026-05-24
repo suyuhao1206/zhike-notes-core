@@ -5,18 +5,28 @@
  * 发布前只需要改这里
  */
 
+const XIAOMI_BASE_URL = 'https://token-plan-sgp.xiaomimimo.com/v1';
+const XIAOMI_CHAT_MODEL = 'mimo-v2.5-pro';
+const XIAOMI_VISION_MODEL = 'mimo-v2.5';
+
 const developConfig = {
-  provider: 'coze',
+  provider: 'xiaomi',
   providers: {
+    xiaomi: {
+      baseUrl: XIAOMI_BASE_URL,
+      apiKey: '',
+      model: XIAOMI_CHAT_MODEL,
+      visionModel: XIAOMI_VISION_MODEL
+    },
     coze: {
       baseUrl: 'https://api.coze.cn/v1',
       apiKey: '',
       bots: {
-        noteSummary: '',
-        qaAssistant: '',
-        examGenerator: '',
-        flashcardGen: '',
-        ocrVision: '',
+        noteSummary: '7626369066156163126',
+        qaAssistant: '7626370009735921664',
+        examGenerator: '7626370288783130667',
+        flashcardGen: '7626370444853608458',
+        ocrVision: '7631191918264729663',
         audioTranscribe: ''
       }
     },
@@ -25,11 +35,6 @@ const developConfig = {
       apiKey: '',
       apiSecret: '',
       baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
-    },
-    openai: {
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
-      model: 'gpt-4o-mini'
     },
     compatible: {
       baseUrl: '',
@@ -40,17 +45,23 @@ const developConfig = {
 };
 
 const releaseConfig = {
-  provider: 'coze',
+  provider: 'xiaomi',
   providers: {
+    xiaomi: {
+      baseUrl: XIAOMI_BASE_URL,
+      apiKey: '',
+      model: XIAOMI_CHAT_MODEL,
+      visionModel: XIAOMI_VISION_MODEL
+    },
     coze: {
       baseUrl: 'https://api.coze.cn/v1',
       apiKey: '',
       bots: {
-        noteSummary: '',
-        qaAssistant: '',
-        examGenerator: '',
-        flashcardGen: '',
-        ocrVision: '',
+        noteSummary: '7626369066156163126',
+        qaAssistant: '7626370009735921664',
+        examGenerator: '7626370288783130667',
+        flashcardGen: '7626370444853608458',
+        ocrVision: '7631191918264729663',
         audioTranscribe: ''
       }
     },
@@ -59,11 +70,6 @@ const releaseConfig = {
       apiKey: '',
       apiSecret: '',
       baseUrl: 'https://office-api-ist-dx.iflyaisol.com'
-    },
-    openai: {
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
-      model: 'gpt-4o-mini'
     },
     compatible: {
       baseUrl: '',
